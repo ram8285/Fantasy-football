@@ -59,6 +59,23 @@ Tap the 🔔 bell in the top bar to enable alerts. While the app is open it chec
 | [FantasyFootballCalculator ADP](https://fantasyfootballcalculator.com/adp) | Real **2-QB format** ADP for the draft Pick Advisor |
 | [Open-Meteo](https://open-meteo.com/) | Game-day stadium weather (wind/rain/temp) for outdoor venues |
 
+### Optional: The Odds API (real betting lines)
+
+Paste a free key from [the-odds-api.com](https://the-odds-api.com) into **Betting → 🔑 The
+Odds API settings** (stored on your device only — never in this repo's code) to unlock:
+
+- **Line shopping** — best available spread/total/moneyline price across US sportsbooks,
+  with the book named on every price
+- **Real player prop lines** — loaded per game on demand (the button shows the credit cost)
+- **💎 Prop edges** — every loaded line compared against this app's league-scored
+  projections; 5+ yard gaps and anytime-TD value get flagged ("line 265.5, we project 289 →
+  OVER edge +23.5")
+- Gaps in ESPN's lines are auto-filled from sportsbook consensus
+
+Quota discipline is built in for the free 500-credit/month tier: game lines cache for 12
+hours and props only load when you ask. Your remaining credits are always shown in the
+settings panel.
+
 Every feed fails gracefully — if one is down, its section just goes quiet instead of breaking the app.
 A note on Twitter/X: its API now costs $100+/month and blocks unauthenticated reads, so it can't be
 pulled into a free client-side app. The Reddit feeds cover the same breaking-news ground — beat

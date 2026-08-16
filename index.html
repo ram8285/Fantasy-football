@@ -222,6 +222,21 @@
     <h2>Betting Angles</h2>
     <p class="subtitle">Every market, generated from live data: spreads, moneylines, totals, team totals, teasers, props, and parlays — built from Vegas lines, projected stat lines, defense strength, and game-day weather. Ideas, not advice — lines move, always check your book, bet responsibly.</p>
   </div>
+  <details class="roster-panel">
+    <summary>🔑 The Odds API — real lines &amp; prop edges</summary>
+    <div class="espn-sync" style="margin:0 14px 12px">
+      <p class="subtitle">Paste your key from <a href="https://the-odds-api.com" target="_blank" rel="noopener">the-odds-api.com</a> — stored on this device only, never in the app's code. Unlocks multi-book line shopping and real prop lines to compare against our projections. Free tier is 500 credits/month: game lines refresh at most twice a day (3 credits), prop lines load per game on demand (~4 credits).</p>
+      <div class="myteam-tools" style="padding:0">
+        <input type="password" id="odds-key-input" placeholder="Your Odds API key…" autocomplete="off">
+        <button id="odds-key-save" class="btn">Save</button>
+      </div>
+      <div id="odds-quota" class="subtitle"></div>
+    </div>
+  </details>
+  <div id="betting-edges-wrap" hidden>
+    <h3 class="waiver-head">💎 Prop edges — our projections vs real lines</h3>
+    <div id="betting-edges" class="card-list"></div>
+  </div>
   <h3 class="waiver-head">🏆 Best bets — strongest angles across all markets</h3>
   <div id="betting-best" class="card-list"><div class="loading">Loading…</div></div>
   <h3 class="waiver-head" style="margin-top:18px">📈 Spreads &amp; moneylines</h3>

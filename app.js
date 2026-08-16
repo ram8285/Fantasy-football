@@ -178,6 +178,33 @@ const TEAM_SCHEDULE_URL = `https://site.api.espn.com/apis/site/v2/sports/footbal
 const TEAM_REDDIT_URL = `https://www.reddit.com/r/${MY_NFL_TEAM.subreddit}/hot.json?limit=25`;
 const TEAM_WORD_RE = new RegExp(`\\b(bills|buffalo)\\b`, "i");
 
+// The Odds API (user-supplied key, stored on-device only — never in the repo).
+// Free tier = 500 credits/month, so: featured lines cached 12h (3 credits per
+// pull), player props fetched per-game on demand (4 credits per game).
+const ODDS_API_HOST = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl";
+const ODDS_KEY_KEY = "ghq_oddsapi_key";
+const ODDS_CACHE_KEY = "ghq_oddsapi_featured_v1";
+const ODDS_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+const PROP_MARKETS = "player_pass_yds,player_rush_yds,player_reception_yds,player_anytime_td";
+const BOOK_ABBR = {
+  draftkings: "DK", fanduel: "FD", betmgm: "MGM", williamhill_us: "CZR",
+  caesars: "CZR", espnbet: "ESPNBet", pointsbetus: "PB", betrivers: "BR",
+  bovada: "BOV", mybookieag: "MB", betonlineag: "BOL", lowvig: "LV", unibet_us: "UNI",
+};
+const NFL_FULLNAME_TO_ABBR = {
+  "Arizona Cardinals": "ARI", "Atlanta Falcons": "ATL", "Baltimore Ravens": "BAL",
+  "Buffalo Bills": "BUF", "Carolina Panthers": "CAR", "Chicago Bears": "CHI",
+  "Cincinnati Bengals": "CIN", "Cleveland Browns": "CLE", "Dallas Cowboys": "DAL",
+  "Denver Broncos": "DEN", "Detroit Lions": "DET", "Green Bay Packers": "GB",
+  "Houston Texans": "HOU", "Indianapolis Colts": "IND", "Jacksonville Jaguars": "JAX",
+  "Kansas City Chiefs": "KC", "Las Vegas Raiders": "LV", "Los Angeles Chargers": "LAC",
+  "Los Angeles Rams": "LAR", "Miami Dolphins": "MIA", "Minnesota Vikings": "MIN",
+  "New England Patriots": "NE", "New Orleans Saints": "NO", "New York Giants": "NYG",
+  "New York Jets": "NYJ", "Philadelphia Eagles": "PHI", "Pittsburgh Steelers": "PIT",
+  "San Francisco 49ers": "SF", "Seattle Seahawks": "SEA", "Tampa Bay Buccaneers": "TB",
+  "Tennessee Titans": "TEN", "Washington Commanders": "WAS",
+};
+
 // Stadium locations for game-day weather (Open-Meteo, free, no key).
 // dome:true = weather ignored (incl. retractable roofs).
 const STADIUMS = {
@@ -240,6 +267,10 @@ const state = {
   espnCfg: loadJSON(ESPN_SYNC_KEY, { leagueId: "1767084290", teamId: null, teamName: null }),
   espn: null,             // {teams, rosteredIds, opponent, currentMatchupPeriod}
   espnError: null,
+  oddsKey: localStorage.getItem(ODDS_KEY_KEY) || "",
+  oddsQuota: null,        // {remaining, used} from response headers
+  oddsShop: new Map(),    // home abbr -> {eventId, spreads, totals, h2h best prices}
+  propLines: new Map(),   // home abbr -> Map("player|market" -> {point, price, book})
   teamNews: [],           // ESPN articles filtered to MY_NFL_TEAM
   teamReddit: [],         // team subreddit posts
   teamInfo: null,         // {record, standing}
@@ -495,6 +526,7 @@ async function loadAll(force = false) {
         .catch(() => { /* projections unavailable — optimizer falls back to ranks */ }),
       loadWeather().catch(() => { /* weather unavailable */ }),
       loadDvp().catch(() => { /* defense-vs-position unavailable */ }),
+      loadOddsApi().catch(() => { /* odds api unavailable or bad key */ }),
     ]);
   }
 
@@ -1717,6 +1749,159 @@ function buildPropIdeas() {
   return ideas.sort((a, b) => b.score - a.score).slice(0, 12);
 }
 
+// ----- The Odds API: real lines, line shopping, prop edges -----
+async function fetchOddsApi(url) {
+  const res = await fetch(url);
+  const remaining = res.headers.get("x-requests-remaining");
+  if (remaining !== null) state.oddsQuota = { remaining, used: res.headers.get("x-requests-used") };
+  if (!res.ok) throw new Error(`Odds API ${res.status}`);
+  return res.json();
+}
+
+// Best price for a side across books. American odds compare numerically
+// (-105 beats -115, +150 beats +120); for spreads/totals a better POINT for
+// the bettor wins first, then price.
+function bestOutcome(bookmakers, marketKey, pickSide, pointPref) {
+  let best = null;
+  for (const bk of bookmakers || []) {
+    const m = (bk.markets || []).find((x) => x.key === marketKey);
+    for (const o of m?.outcomes || []) {
+      if (!pickSide(o)) continue;
+      const cand = { point: o.point ?? null, price: o.price, book: BOOK_ABBR[bk.key] || bk.title || bk.key };
+      if (!best) { best = cand; continue; }
+      if (pointPref && cand.point !== null && best.point !== null && cand.point !== best.point) {
+        if (pointPref === "high" ? cand.point > best.point : cand.point < best.point) best = cand;
+        continue;
+      }
+      if (cand.price > best.price) best = cand;
+    }
+  }
+  return best;
+}
+
+async function loadOddsApi(force = false) {
+  if (!state.oddsKey) return;
+  let events;
+  const cached = loadJSON(ODDS_CACHE_KEY, null);
+  if (!force && cached && Date.now() - cached.ts < ODDS_CACHE_TTL_MS) {
+    events = cached.events;
+    if (cached.quota && !state.oddsQuota) state.oddsQuota = cached.quota;
+  } else {
+    events = await fetchOddsApi(`${ODDS_API_HOST}/odds?regions=us&markets=h2h,spreads,totals&oddsFormat=american&apiKey=${state.oddsKey}`);
+    saveJSON(ODDS_CACHE_KEY, { ts: Date.now(), events, quota: state.oddsQuota });
+  }
+  state.oddsShop = new Map();
+  for (const ev of events || []) {
+    const home = NFL_FULLNAME_TO_ABBR[ev.home_team];
+    const away = NFL_FULLNAME_TO_ABBR[ev.away_team];
+    if (!home || !away) continue;
+    const bks = ev.bookmakers || [];
+    const shop = {
+      eventId: ev.id,
+      spreadHome: bestOutcome(bks, "spreads", (o) => o.name === ev.home_team, "high"),
+      spreadAway: bestOutcome(bks, "spreads", (o) => o.name === ev.away_team, "high"),
+      over: bestOutcome(bks, "totals", (o) => o.name === "Over", "low"),
+      under: bestOutcome(bks, "totals", (o) => o.name === "Under", "high"),
+      mlHome: bestOutcome(bks, "h2h", (o) => o.name === ev.home_team),
+      mlAway: bestOutcome(bks, "h2h", (o) => o.name === ev.away_team),
+    };
+    state.oddsShop.set(home, shop);
+    // Fill gaps when ESPN hasn't posted a line yet.
+    const g = state.games.find((x) => x.home === home && x.away === away);
+    if (g) {
+      if (g.spread === null && shop.spreadHome?.point !== null) g.spread = shop.spreadHome?.point ?? null;
+      if (g.ou === null && shop.over?.point !== null) g.ou = shop.over?.point ?? null;
+      if (g.hMl === null && shop.mlHome) g.hMl = shop.mlHome.price;
+      if (g.aMl === null && shop.mlAway) g.aMl = shop.mlAway.price;
+      if (g.ou !== null && g.spread !== null && g.hTotal === null) {
+        g.hTotal = Math.round((g.ou / 2 - g.spread / 2) * 10) / 10;
+        g.aTotal = Math.round((g.ou / 2 + g.spread / 2) * 10) / 10;
+      }
+    }
+  }
+}
+
+const PROP_MARKET_INFO = {
+  player_pass_yds: { label: "Passing yards", stat: "pass_yd" },
+  player_rush_yds: { label: "Rushing yards", stat: "rush_yd" },
+  player_reception_yds: { label: "Receiving yards", stat: "rec_yd" },
+  player_anytime_td: { label: "Anytime TD", stat: null },
+};
+
+async function loadPropLines(home) {
+  const shop = state.oddsShop.get(home);
+  if (!shop?.eventId || !state.oddsKey) return;
+  const cacheKey = `ghq_props_${shop.eventId}`;
+  let data = loadJSON(cacheKey, null);
+  if (!data || Date.now() - data.ts > ODDS_CACHE_TTL_MS) {
+    const json = await fetchOddsApi(
+      `${ODDS_API_HOST}/events/${shop.eventId}/odds?regions=us&markets=${PROP_MARKETS}&oddsFormat=american&apiKey=${state.oddsKey}`);
+    data = { ts: Date.now(), json };
+    saveJSON(cacheKey, data);
+  }
+  const lines = new Map(); // "normName|market" -> {point, price, book}
+  for (const bk of data.json?.bookmakers || []) {
+    const abbr = BOOK_ABBR[bk.key] || bk.title || bk.key;
+    for (const m of bk.markets || []) {
+      if (!PROP_MARKET_INFO[m.key]) continue;
+      for (const o of m.outcomes || []) {
+        // Yardage props: name is Over/Under, description is the player.
+        // Anytime TD: the player is in description (or name, book-dependent).
+        const isOU = o.name === "Over" || o.name === "Under";
+        if (isOU && o.name !== "Over") continue; // track the Over side
+        const player = o.description || (!isOU && !["Yes", "No"].includes(o.name) ? o.name : null);
+        if (!player) continue;
+        const key = `${normName(player)}|${m.key}`;
+        const cand = { point: o.point ?? null, price: o.price, book: abbr };
+        const cur = lines.get(key);
+        if (!cur || cand.price > cur.price) lines.set(key, cand);
+      }
+    }
+  }
+  state.propLines.set(home, lines);
+}
+
+// Model vs market: compare our league-scored projections to real prop lines.
+function buildPropEdges() {
+  const edges = [];
+  for (const [home, lines] of state.propLines) {
+    for (const [key, line] of lines) {
+      const [pname, market] = key.split("|");
+      const info = PROP_MARKET_INFO[market];
+      if (!info) continue;
+      const p = state.players.find((x) => normName(x.name) === pname);
+      if (!p) continue;
+      if (info.stat && line.point !== null) {
+        const proj = projStatOf(p, info.stat);
+        if (!proj) continue;
+        const edge = Math.round((proj - line.point) * 10) / 10;
+        if (Math.abs(edge) >= 5) {
+          edges.push({
+            p, home, market,
+            text: `${info.label} ${edge > 0 ? "OVER" : "UNDER"} ${line.point} (${line.book} ${line.price > 0 ? "+" : ""}${line.price})`,
+            why: `we project ~${Math.round(proj)} → edge ${edge > 0 ? "+" : ""}${edge}`,
+            score: Math.abs(edge),
+          });
+        }
+      } else if (market === "player_anytime_td") {
+        const projTd = projStatOf(p, "rush_td") + projStatOf(p, "rec_td");
+        if (!projTd || line.price === null) continue;
+        const implied = line.price > 0 ? 100 / (line.price + 100) : Math.abs(line.price) / (Math.abs(line.price) + 100);
+        const edge = Math.round((projTd - implied) * 100) / 100;
+        if (edge >= 0.08) {
+          edges.push({
+            p, home, market,
+            text: `Anytime TD ${line.price > 0 ? "+" : ""}${line.price} (${line.book})`,
+            why: `we project ${projTd.toFixed(2)} TDs vs ${(implied * 100).toFixed(0)}% implied → value`,
+            score: edge * 40,
+          });
+        }
+      }
+    }
+  }
+  return edges.sort((a, b) => b.score - a.score).slice(0, 12);
+}
+
 // Leans across every market — spread, moneyline, total, team total, teaser —
 // each with a conviction score so the strongest float to a Best Bets board.
 function buildMarketLeans() {
@@ -1943,6 +2128,18 @@ function renderBetting() {
     const angles = gameAngles(g);
     const ml = g.hMl !== null || g.aMl !== null
       ? ` · ML ${escapeHtml(g.home)} ${g.hMl > 0 ? "+" : ""}${g.hMl ?? "—"} / ${escapeHtml(g.away)} ${g.aMl > 0 ? "+" : ""}${g.aMl ?? "—"}` : "";
+    // Multi-book line shopping + on-demand prop lines (The Odds API).
+    const shop = state.oddsShop.get(g.home);
+    const fmt = (o, label) => o ? `${label} ${o.point !== null ? o.point + " " : ""}${o.price > 0 ? "+" : ""}${o.price} (${escapeHtml(o.book)})` : null;
+    const shopLine = shop
+      ? [fmt(shop.spreadHome, escapeHtml(g.home)), fmt(shop.spreadAway, escapeHtml(g.away)),
+         fmt(shop.over, "O"), fmt(shop.under, "U"), fmt(shop.mlHome, "ML")].filter(Boolean).join(" · ")
+      : "";
+    const propBtn = shop?.eventId
+      ? (state.propLines.has(g.home)
+        ? ""
+        : `<button class="btn prop-load" data-prop-home="${escapeHtml(g.home)}">📥 Load real prop lines (~4 credits)</button>`)
+      : "";
     return `<div class="bet-card">
       <div class="bet-head">
         <b>${escapeHtml(g.away)} @ ${escapeHtml(g.home)}</b>
@@ -1952,9 +2149,29 @@ function renderBetting() {
         ${g.hTotal !== null ? `implied: ${escapeHtml(g.home)} ${g.hTotal} · ${escapeHtml(g.away)} ${g.aTotal}` : ""}
         ${wx ? ` · ${wx.wind}mph · ${wx.temp}°F${wx.precip >= 50 ? ` · 🌧${wx.precip}%` : ""}` : ""}
       </div>
+      ${shopLine ? `<div class="bet-sub">🛒 best prices: ${shopLine}</div>` : ""}
       ${angles.length ? `<ul class="bet-angles">${angles.map((a) => `<li>${escapeHtml(a)}</li>`).join("")}</ul>` : ""}
+      ${propBtn}
     </div>`;
   }).join("");
+
+  // Prop edges (model vs market) — only when real lines have been loaded.
+  const edgesWrap = document.getElementById("betting-edges-wrap");
+  const edgesEl = document.getElementById("betting-edges");
+  const edges = buildPropEdges();
+  edgesWrap.hidden = !state.propLines.size;
+  edgesEl.innerHTML = edges.length
+    ? edges.map((e) => `<div class="bet-card">
+        <div class="bet-head">
+          <b>${escapeHtml(e.p.name)}</b>
+          <span class="player-sub"><span class="pos-tag pos-${e.p.pos}">${e.p.pos}</span> <span>${escapeHtml(e.p.team)}</span></span>
+        </div>
+        <div class="bet-idea">${escapeHtml(e.text)}</div>
+        <div class="bet-sub">${escapeHtml(e.why)}</div>
+      </div>`).join("")
+    : (state.propLines.size ? '<div class="loading">Lines loaded — no 5+ yard edges vs our projections right now.</div>' : "");
+
+  renderOddsSettings();
 
   const props = buildPropIdeas();
   propsEl.innerHTML = props.length
@@ -1977,6 +2194,18 @@ function renderBetting() {
         <div class="bet-sub">${escapeHtml(pl.why)}</div>
       </div>`).join("")
     : '<div class="loading">Parlay ideas need posted lines and projections.</div>';
+}
+
+function renderOddsSettings() {
+  const quotaEl = document.getElementById("odds-quota");
+  if (!quotaEl) return;
+  if (!state.oddsKey) {
+    quotaEl.textContent = "No key saved yet — game lines above come from ESPN only.";
+  } else if (state.oddsQuota) {
+    quotaEl.textContent = `✅ Key active · ${state.oddsQuota.remaining} credits remaining this month.`;
+  } else {
+    quotaEl.textContent = "✅ Key saved — lines will load on the next refresh.";
+  }
 }
 
 // ----- ESPN league sync (auto-fetch for public leagues, paste fallback) -----
@@ -2292,6 +2521,38 @@ function initEvents() {
       };
     } catch (err) {
       resultEl.innerHTML = `<div class="error-box">Couldn't read that. Make sure you copied the ENTIRE page from the link in step 2 (it should start with {"). ${escapeHtml(err.message)}</div>`;
+    }
+  });
+
+  // The Odds API key + on-demand prop loading
+  const oddsInput = document.getElementById("odds-key-input");
+  oddsInput.value = state.oddsKey;
+  document.getElementById("odds-key-save").addEventListener("click", async () => {
+    state.oddsKey = oddsInput.value.trim();
+    localStorage.setItem(ODDS_KEY_KEY, state.oddsKey);
+    localStorage.removeItem(ODDS_CACHE_KEY); // force a fresh pull with the new key
+    renderOddsSettings();
+    if (state.oddsKey) {
+      try {
+        await loadOddsApi(true);
+        renderBetting();
+      } catch {
+        document.getElementById("odds-quota").textContent =
+          "⚠ Couldn't fetch with that key — double-check it (or quota may be exhausted).";
+      }
+    }
+  });
+  document.getElementById("betting-games").addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-prop-home]");
+    if (!btn) return;
+    btn.textContent = "Loading…";
+    btn.disabled = true;
+    try {
+      await loadPropLines(btn.dataset.propHome);
+      renderBetting();
+    } catch {
+      btn.textContent = "⚠ Failed — check key/quota";
+      btn.disabled = false;
     }
   });
 
