@@ -8,112 +8,133 @@
 
 // ---------------------------------------------------------------------------
 // League: "Wings, Rings, and Eye Patches" — 10-team ESPN H2H points.
-// Scoring below is from the league settings screenshots.
+// Defaults below match the league settings screenshots. Every value is
+// editable in the My League tab; edits persist on-device and instantly
+// re-run projections, the lineup optimizer, and the QB draft-board boost.
+// Items marked game:true are single-game bonuses / rare plays that don't
+// feed weekly projections (projections are per-game averages).
 // ---------------------------------------------------------------------------
-const LEAGUE_SCORING = {
-  "Passing": [
-    ["Passing Yards (PY)", "0.04/yd"],
-    ["TD Pass (PTD)", "6"],
-    ["50+ yard TD pass bonus (PTD50)", "1"],
-    ["Interceptions Thrown (INT)", "-2"],
-    ["2pt Passing Conversion (2PC)", "2"],
-    ["400+ yard passing game (P400)", "1"],
-  ],
-  "Rushing": [
-    ["Rushing Yards (RY)", "0.1/yd"],
-    ["TD Rush (RTD)", "6"],
-    ["50+ yard TD rush bonus (RTD50)", "1"],
-    ["2pt Rushing Conversion (2PR)", "2"],
-    ["200+ yard rushing game (RY200)", "1"],
-  ],
-  "Receiving": [
-    ["Receiving Yards (REY)", "0.1/yd"],
-    ["Each Reception (REC)", "0.5"],
-    ["TD Reception (RETD)", "6"],
-    ["50+ yard TD rec bonus (RETD50)", "1"],
-    ["2pt Receiving Conversion (2PRE)", "2"],
-    ["200+ yard receiving game (REY200)", "1"],
-  ],
-  "Kicking": [
-    ["Each PAT Made (PAT)", "1"],
-    ["Total FG Missed (FGM)", "-1"],
-    ["FG Made 0-39 yards (FG0)", "3"],
-    ["FG Made 40-49 yards (FG40)", "4"],
-    ["FG Made 50-59 yards (FG50)", "5"],
-    ["FG Made 60+ yards (FG60)", "6"],
-  ],
-  "Team Defense / Special Teams": [
-    ["Each Sack (SK)", "1"],
-    ["Interception Return TD (INTTD)", "6"],
-    ["Fumble Return TD (FRTD)", "6"],
-    ["Kickoff Return TD (KRTD)", "6"],
-    ["Punt Return TD (PRTD)", "6"],
-    ["Blocked Punt or FG return for TD (BLKKRTD)", "6"],
-    ["Blocked Punt, PAT or FG (BLKK)", "2"],
-    ["Each Interception (INT)", "2"],
-    ["Each Fumble Recovered (FR)", "2"],
-    ["Each Safety (SF)", "2"],
-    ["0 points allowed (PA0)", "5"],
-    ["1-6 points allowed (PA1)", "4"],
-    ["7-13 points allowed (PA7)", "3"],
-    ["14-17 points allowed (PA14)", "1"],
-    ["28-34 points allowed (PA28)", "-1"],
-    ["35-45 points allowed (PA35)", "-3"],
-    ["46+ points allowed (PA46)", "-5"],
-    ["Less than 100 total yards allowed (YA100)", "5"],
-    ["100-199 total yards allowed (YA199)", "3"],
-    ["200-299 total yards allowed (YA299)", "2"],
-    ["350-399 total yards allowed (YA399)", "-1"],
-    ["400-449 total yards allowed (YA449)", "-3"],
-    ["450-499 total yards allowed (YA499)", "-5"],
-    ["500-549 total yards allowed (YA549)", "-6"],
-    ["550+ total yards allowed (YA550)", "-7"],
-    ["2pt Return (2PTRET)", "2"],
-    ["1pt Safety (1PSF)", "1"],
-  ],
-  "Miscellaneous": [
-    ["Kickoff Return TD (KRTD)", "6"],
-    ["Punt Return TD (PRTD)", "6"],
-    ["Fumble Recovered for TD (FTD)", "6"],
-    ["Total Fumbles Lost (FUML)", "-2"],
-    ["Interception Return TD (INTTD)", "6"],
-    ["Fumble Return TD (FRTD)", "6"],
-    ["Blocked Punt or FG return for TD (BLKKRTD)", "6"],
-    ["2pt Return (2PTRET)", "2"],
-    ["1pt Safety (1PSF)", "1"],
-  ],
-};
-
-const STRATEGY_NOTES = [
-  {
-    title: "6-point passing TDs — QBs are gold here",
-    body: "Your league pays 6 per passing TD instead of ESPN's default 4. Elite QBs outscore every other position by a wide margin. Draft QBs earlier than standard rankings suggest, and don't stream the position if you can lock up a stud.",
-  },
-  {
-    title: "The OP slot = start TWO quarterbacks",
-    body: "Your utility (OP) slot accepts any offensive player — including a QB. Combined with 6-point passing TDs, a second QB is almost always the best use of that slot. This app's Rankings and Draft boards are already re-ranked for that reality (the '▲ market #N' badge shows how far standard apps underrate a player here). With 10 teams starting 2 QBs, 20 QBs have starter value — leaguemates drafting off default rankings will let QBs slide. Take them.",
-  },
-  {
-    title: "Half-PPR (0.5 per catch)",
-    body: "Splits the difference between standard and full PPR. High-volume receivers still matter, but touchdown upside and yardage carry more weight than in full PPR. RBs who catch passes (dual threats) are extra valuable.",
-  },
-  {
-    title: "Kickers with big legs are worth more here",
-    body: "Your league pays 5 for 50-59 yd FGs and 6 for 60+, with only -1 per miss. Target kickers with strong legs on teams that stall between the 30s — long-FG volume is a real edge.",
-  },
-  {
-    title: "D/ST is a massive weekly swing",
-    body: "Between points-allowed and yards-allowed brackets, a shutdown day can score 20+, and a blowup can go deep negative (-12 or worse). Stream defenses against weak offenses every week instead of holding one all season — check the Waivers tab.",
-  },
-  {
-    title: "Fumbles hurt (-2)",
-    body: "Fumble-prone ball carriers cost real points. It's a tiebreaker when two players are close in your rankings.",
-  },
-  {
-    title: "Bonuses reward boom games",
-    body: "50+ yard TD catches and 200-yard receiving games earn extra. Deep-threat receivers get a small bump in value over pure possession guys.",
-  },
+const SCORING_CONFIG = [
+  { section: "Passing", items: [
+    { key: "pass_yd", label: "Passing Yards, per yard (PY)", def: 0.04 },
+    { key: "pass_td", label: "TD Pass (PTD)", def: 6 },
+    { key: "pass_td50", label: "50+ yard TD pass bonus (PTD50)", def: 1, game: true },
+    { key: "pass_int", label: "Interceptions Thrown (INT)", def: -2 },
+    { key: "pass_2pt", label: "2pt Passing Conversion (2PC)", def: 2 },
+    { key: "pass_400", label: "400+ yard passing game (P400)", def: 1, game: true },
+  ]},
+  { section: "Rushing", items: [
+    { key: "rush_yd", label: "Rushing Yards, per yard (RY)", def: 0.1 },
+    { key: "rush_td", label: "TD Rush (RTD)", def: 6 },
+    { key: "rush_td50", label: "50+ yard TD rush bonus (RTD50)", def: 1, game: true },
+    { key: "rush_2pt", label: "2pt Rushing Conversion (2PR)", def: 2 },
+    { key: "rush_200", label: "200+ yard rushing game (RY200)", def: 1, game: true },
+  ]},
+  { section: "Receiving", items: [
+    { key: "rec_yd", label: "Receiving Yards, per yard (REY)", def: 0.1 },
+    { key: "rec", label: "Each reception (REC)", def: 0.5 },
+    { key: "rec_td", label: "TD Reception (RETD)", def: 6 },
+    { key: "rec_td50", label: "50+ yard TD rec bonus (RETD50)", def: 1, game: true },
+    { key: "rec_2pt", label: "2pt Receiving Conversion (2PRE)", def: 2 },
+    { key: "rec_200", label: "200+ yard receiving game (REY200)", def: 1, game: true },
+  ]},
+  { section: "Kicking", items: [
+    { key: "pat", label: "Each PAT Made (PAT)", def: 1 },
+    { key: "fg_miss", label: "Total FG Missed (FGM)", def: -1 },
+    { key: "fg0", label: "FG Made 0-39 yards (FG0)", def: 3 },
+    { key: "fg40", label: "FG Made 40-49 yards (FG40)", def: 4 },
+    { key: "fg50", label: "FG Made 50-59 yards (FG50)", def: 5 },
+    { key: "fg60", label: "FG Made 60+ yards (FG60)", def: 6 },
+  ]},
+  { section: "Team Defense / Special Teams", items: [
+    { key: "d_sack", label: "Each Sack (SK)", def: 1 },
+    { key: "d_td", label: "Any defensive or return TD (INTTD / FRTD / KRTD / PRTD / BLKKRTD)", def: 6 },
+    { key: "d_blk", label: "Blocked Punt, PAT or FG (BLKK)", def: 2 },
+    { key: "d_int", label: "Each Interception (INT)", def: 2 },
+    { key: "d_fr", label: "Each Fumble Recovered (FR)", def: 2 },
+    { key: "d_safety", label: "Each Safety (SF)", def: 2 },
+    { key: "pa0", label: "0 points allowed (PA0)", def: 5 },
+    { key: "pa1", label: "1-6 points allowed (PA1)", def: 4 },
+    { key: "pa7", label: "7-13 points allowed (PA7)", def: 3 },
+    { key: "pa14", label: "14-17 points allowed (PA14)", def: 1 },
+    { key: "pa18", label: "18-27 points allowed (PA18)", def: 0 },
+    { key: "pa28", label: "28-34 points allowed (PA28)", def: -1 },
+    { key: "pa35", label: "35-45 points allowed (PA35)", def: -3 },
+    { key: "pa46", label: "46+ points allowed (PA46)", def: -5 },
+    { key: "ya100", label: "Less than 100 total yards allowed (YA100)", def: 5 },
+    { key: "ya199", label: "100-199 total yards allowed (YA199)", def: 3 },
+    { key: "ya299", label: "200-299 total yards allowed (YA299)", def: 2 },
+    { key: "ya349", label: "300-349 total yards allowed (YA300)", def: 0 },
+    { key: "ya399", label: "350-399 total yards allowed (YA399)", def: -1 },
+    { key: "ya449", label: "400-449 total yards allowed (YA449)", def: -3 },
+    { key: "ya499", label: "450-499 total yards allowed (YA499)", def: -5 },
+    { key: "ya549", label: "500-549 total yards allowed (YA549)", def: -6 },
+    { key: "ya550", label: "550+ total yards allowed (YA550)", def: -7 },
+    { key: "d_2pt_ret", label: "2pt Return (2PTRET)", def: 2, game: true },
+    { key: "d_1pt_sfty", label: "1pt Safety (1PSF)", def: 1, game: true },
+  ]},
+  { section: "Miscellaneous", items: [
+    { key: "fum_lost", label: "Total Fumbles Lost (FUML)", def: -2 },
+    { key: "misc_td", label: "Offensive player kick/punt-return or fumble-recovery TD (KRTD / PRTD / FTD)", def: 6, game: true },
+  ]},
 ];
+
+const SCORING_DEFAULTS = {};
+for (const sec of SCORING_CONFIG) for (const it of sec.items) SCORING_DEFAULTS[it.key] = it.def;
+const SCORING_KEY = "ghq_scoring_v1";
+
+function loadScoring() {
+  return { ...SCORING_DEFAULTS, ...loadJSON(SCORING_KEY, {}) };
+}
+function saveScoringOverrides() {
+  const overrides = {};
+  for (const [k, v] of Object.entries(state.scoring)) {
+    if (v !== SCORING_DEFAULTS[k]) overrides[k] = v;
+  }
+  saveJSON(SCORING_KEY, overrides);
+}
+
+// Strategy notes are generated from the CURRENT scoring settings, so they
+// stay honest if values are edited before the season.
+function strategyNotes() {
+  const S = state.scoring;
+  const notes = [];
+  if (S.pass_td > 4) {
+    notes.push({
+      title: `${S.pass_td}-point passing TDs — QBs are gold here`,
+      body: `Your league pays ${S.pass_td} per passing TD instead of ESPN's default 4. Elite QBs outscore every other position by a wide margin. Draft QBs earlier than standard rankings suggest, and don't stream the position if you can lock up a stud.`,
+    });
+  }
+  notes.push({
+    title: "The OP slot = start TWO quarterbacks",
+    body: `Your utility (OP) slot accepts any offensive player — including a QB${S.pass_td > 4 ? `, and with ${S.pass_td}-point passing TDs` : ""} a second QB is almost always the best use of that slot. This app's Rankings and Draft boards are already re-ranked for that reality (the '▲ market #N' badge shows how far standard apps underrate a player here). With 10 teams starting 2 QBs, 20 QBs have starter value — leaguemates drafting off default rankings will let QBs slide. Take them.`,
+  });
+  notes.push({
+    title: S.rec >= 1 ? "Full PPR (1 per catch)" : S.rec > 0 ? `${S.rec} per reception` : "No PPR",
+    body: S.rec > 0 && S.rec < 1
+      ? "Splits the difference between standard and full PPR. High-volume receivers still matter, but touchdown upside and yardage carry more weight than in full PPR. RBs who catch passes (dual threats) are extra valuable."
+      : S.rec >= 1
+        ? "Target-hog receivers and pass-catching RBs get a big boost — volume is king."
+        : "Yardage and TDs are everything — possession receivers lose value.",
+  });
+  if (S.fg50 > 4 || S.fg60 > 4) {
+    notes.push({
+      title: "Kickers with big legs are worth more here",
+      body: `Your league pays ${S.fg50} for 50-59 yd FGs and ${S.fg60} for 60+, with ${S.fg_miss} per miss. Target kickers with strong legs on teams that stall between the 30s — long-FG volume is a real edge.`,
+    });
+  }
+  notes.push({
+    title: "D/ST is a massive weekly swing",
+    body: "Between points-allowed and yards-allowed brackets, a shutdown day can score 20+, and a blowup can go deep negative. Stream defenses against weak offenses every week instead of holding one all season — check the Waivers tab.",
+  });
+  if (S.fum_lost < 0) {
+    notes.push({
+      title: `Fumbles hurt (${S.fum_lost})`,
+      body: "Fumble-prone ball carriers cost real points. It's a tiebreaker when two players are close in your rankings.",
+    });
+  }
+  return notes;
+}
 
 // ---------------------------------------------------------------------------
 // Constants & state
@@ -159,6 +180,8 @@ const state = {
   news: [],
   draft: loadDraft(),     // { [playerId]: "mine" | "taken" }
   myTeam: loadJSON(MYTEAM_KEY, []),      // [playerId]
+  scoring: null,          // set at boot via loadScoring()
+  projStats: new Map(),   // id -> raw projected stat line (re-scorable)
   projections: new Map(), // id -> projected pts in THIS league's scoring
   schedule: new Map(),    // sleeper team code -> {opp, homeAway, date}
   defense: new Map(),     // sleeper team code -> {paPerGame, easeRank (1=easiest), games}
@@ -190,6 +213,7 @@ function saveDraft() {
 function saveMyTeam() {
   saveJSON(MYTEAM_KEY, state.myTeam);
 }
+state.scoring = loadScoring();
 
 // ---------------------------------------------------------------------------
 // Data fetching
@@ -276,12 +300,16 @@ function applyLeagueRanks(players) {
   players.forEach((p, i) => { p.mrank = i + 1; });
   const qbs = players.filter((p) => p.pos === "QB");
   const others = players.filter((p) => p.pos !== "QB");
-  // Target overall slot for the r-th QB (10-team, 20 starting QB slots,
-  // 6-pt pass TDs): ~QB1 #1 overall, QB10 ~#17, QB20 ~#35, then a fast fade.
+  // Target overall slot for the r-th QB (10-team, 20 starting QB slots).
+  // The slope reacts to the passing-TD setting: at 6 pts QB1 ≈ #1 overall and
+  // QB20 ~#35; if TDs drop toward 4 the boost softens automatically.
+  const passTd = state.scoring?.pass_td ?? 6;
+  const slope = 1.8 + Math.max(0, 6 - passTd) * 0.15;
+  const base20 = Math.round(slope * 20 - 0.8);
   const qbSlot = (r) => {
-    if (r <= 20) return Math.max(1, Math.round(1.8 * r - 0.8));
-    if (r <= 30) return 36 + (r - 20) * 4;
-    return 76 + (r - 30) * 8;
+    if (r <= 20) return Math.max(1, Math.round(slope * r - 0.8));
+    if (r <= 30) return base20 + (r - 20) * 4;
+    return base20 + 40 + (r - 30) * 8;
   };
   const merged = [];
   let qi = 0, oi = 0;
@@ -400,66 +428,78 @@ function parseStandings(d) {
 
 function parseProjections(raw) {
   // Sleeper serves projections either as {player_id: statsObj} or as an array
-  // of {player_id, stats}. Normalize both, scoring with THIS league's rules.
-  state.projections = new Map();
+  // of {player_id, stats}. Keep the RAW stat lines so a scoring-settings edit
+  // can re-score everything without refetching.
+  state.projStats = new Map();
   const put = (id, stats) => {
-    if (!id || !stats) return;
-    const pts = leaguePoints(stats);
-    if (pts > 0) state.projections.set(String(id), pts);
+    if (id && stats) state.projStats.set(String(id), stats);
   };
   if (Array.isArray(raw)) {
     for (const row of raw) put(row.player_id, row.stats || row);
   } else if (raw && typeof raw === "object") {
     for (const [id, stats] of Object.entries(raw)) put(id, stats);
   }
+  recomputeProjections();
 }
 
-// Score a Sleeper stat line with the league's exact settings. Rate-based
-// yardage-game bonuses (P400/RY200/REY200) are omitted — projections are
-// averages, so those thresholds almost never trigger meaningfully.
+function recomputeProjections() {
+  state.projections = new Map();
+  for (const [id, stats] of state.projStats) {
+    const pts = leaguePoints(stats);
+    if (pts > 0) state.projections.set(id, pts);
+  }
+}
+
+// Score a Sleeper stat line with the CURRENT scoring settings (editable in
+// the My League tab). Single-game threshold bonuses (P400/RY200/REY200) are
+// omitted — projections are averages, so those thresholds almost never
+// trigger meaningfully.
 function leaguePoints(s) {
+  const S = state.scoring;
   const n = (k) => Number(s[k]) || 0;
   let pts =
-    n("pass_yd") * 0.04 + n("pass_td") * 6 + n("pass_int") * -2 + n("pass_2pt") * 2 +
-    n("rush_yd") * 0.1 + n("rush_td") * 6 + n("rush_2pt") * 2 +
-    n("rec") * 0.5 + n("rec_yd") * 0.1 + n("rec_td") * 6 + n("rec_2pt") * 2 +
-    n("fum_lost") * -2;
-  // Kicking
+    n("pass_yd") * S.pass_yd + n("pass_td") * S.pass_td + n("pass_int") * S.pass_int + n("pass_2pt") * S.pass_2pt +
+    n("rush_yd") * S.rush_yd + n("rush_td") * S.rush_td + n("rush_2pt") * S.rush_2pt +
+    n("rec") * S.rec + n("rec_yd") * S.rec_yd + n("rec_td") * S.rec_td + n("rec_2pt") * S.rec_2pt +
+    n("fum_lost") * S.fum_lost;
+  // Kicking (fg_miss is stored as a negative value, e.g. -1)
   pts +=
-    n("xpm") * 1 - n("fgmiss") * 1 - n("xpmiss") * 0 +
-    (n("fgm_0_19") + n("fgm_20_29") + n("fgm_30_39")) * 3 +
-    n("fgm_40_49") * 4 +
-    (n("fgm_50_59") || n("fgm_50p")) * 5 +
-    n("fgm_60p") * 6;
+    n("xpm") * S.pat + n("fgmiss") * S.fg_miss +
+    (n("fgm_0_19") + n("fgm_20_29") + n("fgm_30_39")) * S.fg0 +
+    n("fgm_40_49") * S.fg40 +
+    (n("fgm_50_59") || n("fgm_50p")) * S.fg50 +
+    n("fgm_60p") * S.fg60;
   // Team defense
   pts +=
-    n("sack") * 1 + (n("int") + n("def_int")) * 2 + n("fum_rec") * 2 +
-    (n("def_td") + n("def_st_td")) * 6 + n("safe") * 2 + n("blk_kick") * 2;
+    n("sack") * S.d_sack + (n("int") + n("def_int")) * S.d_int + n("fum_rec") * S.d_fr +
+    (n("def_td") + n("def_st_td")) * S.d_td + n("safe") * S.d_safety + n("blk_kick") * S.d_blk;
   if (s.pts_allow !== undefined) pts += paBracket(n("pts_allow"));
   if (s.yds_allow !== undefined) pts += yaBracket(n("yds_allow"));
   return Math.round(pts * 10) / 10;
 }
 
 function paBracket(pa) {
-  if (pa <= 0) return 5;
-  if (pa <= 6) return 4;
-  if (pa <= 13) return 3;
-  if (pa <= 17) return 1;
-  if (pa <= 27) return 0;
-  if (pa <= 34) return -1;
-  if (pa <= 45) return -3;
-  return -5;
+  const S = state.scoring;
+  if (pa <= 0) return S.pa0;
+  if (pa <= 6) return S.pa1;
+  if (pa <= 13) return S.pa7;
+  if (pa <= 17) return S.pa14;
+  if (pa <= 27) return S.pa18;
+  if (pa <= 34) return S.pa28;
+  if (pa <= 45) return S.pa35;
+  return S.pa46;
 }
 function yaBracket(ya) {
-  if (ya < 100) return 5;
-  if (ya < 200) return 3;
-  if (ya < 300) return 2;
-  if (ya < 350) return 0;
-  if (ya < 400) return -1;
-  if (ya < 450) return -3;
-  if (ya < 500) return -5;
-  if (ya < 550) return -6;
-  return -7;
+  const S = state.scoring;
+  if (ya < 100) return S.ya100;
+  if (ya < 200) return S.ya199;
+  if (ya < 300) return S.ya299;
+  if (ya < 350) return S.ya349;
+  if (ya < 400) return S.ya399;
+  if (ya < 450) return S.ya449;
+  if (ya < 500) return S.ya499;
+  if (ya < 550) return S.ya549;
+  return S.ya550;
 }
 
 function setUpdatedAt(text) {
@@ -1009,22 +1049,54 @@ function maybeNotify() {
   });
 }
 
-// ----- League -----
-function renderLeague() {
-  const el = document.getElementById("league-content");
-  let html = STRATEGY_NOTES.map((n) =>
+// ----- League (strategy notes + editable scoring) -----
+function renderStrategyNotes() {
+  document.getElementById("strategy-notes").innerHTML = strategyNotes().map((n) =>
     `<div class="strategy-card"><h4>${escapeHtml(n.title)}</h4><p>${escapeHtml(n.body)}</p></div>`
   ).join("");
+}
 
-  for (const [section, rows] of Object.entries(LEAGUE_SCORING)) {
-    html += `<div class="scoring-section"><h3>${escapeHtml(section)}</h3><table class="scoring-table">`;
-    for (const [label, pts] of rows) {
-      const neg = String(pts).trim().startsWith("-");
-      html += `<tr><td>${escapeHtml(label)}</td><td class="${neg ? "pts-neg" : "pts-pos"}">${escapeHtml(pts)}</td></tr>`;
+function renderLeague() {
+  const el = document.getElementById("league-content");
+  let html = `<div id="strategy-notes"></div>
+    <div class="scoring-editor-head">
+      <h3>Scoring Settings — editable</h3>
+      <button id="scoring-reset" class="btn btn-danger">Reset to league defaults</button>
+    </div>
+    <p class="subtitle">If your league changes a value before the season, edit it here. Every projection,
+    start/sit recommendation, and draft ranking re-computes instantly, and your edits are saved on this
+    device. Values marked * are single-game bonuses or rare plays that don't feed weekly projections
+    (projections are per-game averages).</p>`;
+
+  for (const sec of SCORING_CONFIG) {
+    html += `<div class="scoring-section"><h3>${escapeHtml(sec.section)}</h3><table class="scoring-table">`;
+    for (const it of sec.items) {
+      const v = state.scoring[it.key];
+      const modified = v !== SCORING_DEFAULTS[it.key];
+      html += `<tr>
+        <td>${escapeHtml(it.label)}${it.game ? " *" : ""}
+          ${modified ? '<span class="mod-chip">edited</span>' : ""}</td>
+        <td><input class="scoring-input ${v < 0 ? "pts-neg" : ""}" type="number" step="any"
+             inputmode="decimal" data-key="${it.key}" value="${v}"></td>
+      </tr>`;
     }
     html += "</table></div>";
   }
   el.innerHTML = html;
+  renderStrategyNotes();
+}
+
+// A scoring edit re-runs every analysis: projections re-scored from raw stat
+// lines, the 2-QB draft board re-built, and all tabs re-rendered.
+function reanalyze() {
+  recomputeProjections();
+  if (state.players.length) {
+    state.players = applyLeagueRanks(
+      [...state.players].sort((a, b) => (a.mrank || Infinity) - (b.mrank || Infinity))
+    );
+  }
+  renderAll();
+  renderStrategyNotes();
 }
 
 // ---------------------------------------------------------------------------
@@ -1127,6 +1199,29 @@ function initEvents() {
   });
 
   document.getElementById("notify-btn").addEventListener("click", toggleNotifications);
+
+  // Scoring editor (My League tab) — delegated so re-renders keep working.
+  const league = document.getElementById("league-content");
+  league.addEventListener("change", (e) => {
+    const input = e.target.closest(".scoring-input");
+    if (!input) return;
+    const key = input.dataset.key;
+    const v = parseFloat(input.value);
+    if (Number.isNaN(v)) { input.value = state.scoring[key]; return; }
+    state.scoring[key] = v;
+    saveScoringOverrides();
+    renderLeague();   // refresh "edited" chips
+    reanalyze();
+  });
+  league.addEventListener("click", (e) => {
+    if (!e.target.closest("#scoring-reset")) return;
+    if (confirm("Reset all scoring values to your league's defaults?")) {
+      localStorage.removeItem(SCORING_KEY);
+      state.scoring = loadScoring();
+      renderLeague();
+      reanalyze();
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------

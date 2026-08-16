@@ -391,6 +391,40 @@ span.chip-taken { border-color: var(--danger); color: var(--danger); }
 .strategy-card h4 { margin-bottom: 3px; font-size: 0.9rem; }
 .strategy-card p { color: var(--text-dim); }
 
+.scoring-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 18px;
+  margin-bottom: 6px;
+}
+.scoring-editor-head h3 { font-size: 1.05rem; }
+.scoring-input {
+  width: 74px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.88rem;
+  text-align: right;
+  padding: 5px 8px;
+}
+.scoring-input:focus { border-color: var(--accent); outline: none; }
+.scoring-input.pts-neg { color: var(--danger); }
+.mod-chip {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 20px;
+  background: rgba(210, 153, 34, 0.18);
+  color: var(--warn);
+  vertical-align: middle;
+}
+
 .scoring-section { margin-top: 18px; }
 .scoring-section h3 { font-size: 1rem; margin-bottom: 8px; }
 .scoring-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }

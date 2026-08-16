@@ -15,7 +15,7 @@ without needing Twitter or social media apps.
 | 📊 **Rankings** | Live rankings **re-ranked for this league's 2-QB, 6-pt-pass-TD reality**: QBs are pulled up to superflex-calibrated slots (QB1 ≈ #1 overall, ~20 QBs with starter value), while a "▲ market #N" badge shows where standard 1-QB apps rank each player — that gap is your draft-day value edge. Position filters, positional ranks, injury tags, and trending badges included. |
 | 🎯 **Draft** | A draft-day assistant using the same league-adjusted board: tap **MINE** when you pick, **GONE** when someone else does. Tracks your roster by lineup slot (including the OP slot), shows best-available, and warns when a position's top tier is running dry — with the QB tier sized at 20 for this 2-QB format. Picks are saved on your device. |
 | 🔄 **Waivers** | Who the fantasy world is adding and dropping *right now* — trending player counts over the last 24 hours across all Sleeper leagues. This surfaces breaking news (injuries, depth chart changes, breakouts) even if you never see a tweet. |
-| ⚙️ **My League** | Your ESPN league's full scoring settings plus strategy notes tailored to them (6-pt pass TDs → draft QBs early, OP slot → start two QBs, long-FG kicker bonuses, big-swing D/ST scoring, etc.). |
+| ⚙️ **My League** | Your ESPN league's full scoring settings — **every value is editable** in case the league changes rules before the season. Edit a value and the entire app re-analyzes instantly: projections re-score, the lineup optimizer re-runs, the QB draft-board boost recalibrates (drop passing TDs to 4 and it softens automatically), and the strategy notes rewrite themselves. Edits persist on your device; one tap resets to league defaults. |
 
 ## Notifications
 
@@ -56,9 +56,10 @@ python3 -m http.server 8000
 
 ## Customizing
 
-- **Scoring settings** live at the top of `app.js` (`LEAGUE_SCORING`), and the
-  projection math is in `leaguePoints()` — both match the "Wings, Rings, and Eye
-  Patches" league settings.
+- **Scoring settings** are editable right in the app (My League tab) — no code
+  needed. Defaults live in `SCORING_CONFIG` in `app.js` and match the "Wings,
+  Rings, and Eye Patches" league; the projection math in `leaguePoints()` reads
+  the live values.
 - **Roster slots** are in `ROSTER_SLOTS` in `app.js`
   (QB / 2 RB / 2 WR / TE / OP / D/ST / K / 7 bench / IR).
 
