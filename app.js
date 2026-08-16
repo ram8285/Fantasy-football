@@ -205,6 +205,20 @@ const NFL_FULLNAME_TO_ABBR = {
   "Tennessee Titans": "TEN", "Washington Commanders": "WAS",
 };
 
+// SportsGameOdds (second optional provider, user-supplied key on-device only).
+// Bills per EVENT (all markets included), free tier 2,500 objects/month with a
+// 10-min delay — cheap enough to pull props for the whole weekly slate.
+const SGO_HOST = "https://api.sportsgameodds.com/v2";
+const SGO_KEY_KEY = "ghq_sgo_key";
+const SGO_CACHE_KEY = "ghq_sgo_cache_v1";
+const SGO_STAT_TO_MARKET = {
+  passing_yards: "player_pass_yds",
+  rushing_yards: "player_rush_yds",
+  receiving_yards: "player_reception_yds",
+  touchdowns: "player_anytime_td",
+  anytime_touchdown: "player_anytime_td",
+};
+
 // Stadium locations for game-day weather (Open-Meteo, free, no key).
 // dome:true = weather ignored (incl. retractable roofs).
 const STADIUMS = {
@@ -268,9 +282,12 @@ const state = {
   espn: null,             // {teams, rosteredIds, opponent, currentMatchupPeriod}
   espnError: null,
   oddsKey: localStorage.getItem(ODDS_KEY_KEY) || "",
+  sgoKey: localStorage.getItem(SGO_KEY_KEY) || "",
+  sgoStatus: null,        // human-readable result of the last SGO pull
   oddsQuota: null,        // {remaining, used} from response headers
   oddsShop: new Map(),    // home abbr -> {eventId, spreads, totals, h2h best prices}
   propLines: new Map(),   // home abbr -> Map("player|market" -> {point, price, book})
+  toaPropsLoaded: new Set(), // games whose TOA prop lines were fetched this session
   teamNews: [],           // ESPN articles filtered to MY_NFL_TEAM
   teamReddit: [],         // team subreddit posts
   teamInfo: null,         // {record, standing}
@@ -528,6 +545,7 @@ async function loadAll(force = false) {
       loadDvp().catch(() => { /* defense-vs-position unavailable */ }),
       loadOddsApi().catch(() => { /* odds api unavailable or bad key */ }),
     ]);
+    await loadSgo().catch((e) => { state.sgoStatus = `SGO error: ${e.message}`; });
   }
 
   state.trendMap = new Map();
@@ -1821,6 +1839,83 @@ async function loadOddsApi(force = false) {
   }
 }
 
+// ----- SportsGameOdds: week-wide prop lines + gap-filling game odds -----
+function sgoTeamAbbr(t) {
+  if (!t) return null;
+  const cand = t.names?.abbr || t.names?.short || t.abbreviation ||
+    NFL_FULLNAME_TO_ABBR[t.names?.long || t.names?.medium || t.name] || null;
+  return cand ? normTeam(cand) : null;
+}
+
+function sgoPlayerName(playerID) {
+  // e.g. "PATRICK_MAHOMES_1_NFL" -> "patrick mahomes"
+  return String(playerID).replace(/_\d+_NFL$/i, "").replace(/_/g, " ").toLowerCase();
+}
+
+function sgoNum(...vals) {
+  for (const v of vals) {
+    const n = parseFloat(v);
+    if (!Number.isNaN(n)) return n;
+  }
+  return null;
+}
+
+async function loadSgo(force = false) {
+  if (!state.sgoKey) return;
+  let data;
+  const cached = loadJSON(SGO_CACHE_KEY, null);
+  if (!force && cached && Date.now() - cached.ts < ODDS_CACHE_TTL_MS) {
+    data = cached.data;
+  } else {
+    const json = await fetchJSON(`${SGO_HOST}/events?leagueID=NFL&oddsAvailable=true&limit=50&apiKey=${state.sgoKey}`);
+    data = json?.data || json?.events || (Array.isArray(json) ? json : []);
+    saveJSON(SGO_CACHE_KEY, { ts: Date.now(), data });
+  }
+  let games = 0, propCount = 0;
+  for (const ev of data || []) {
+    const home = sgoTeamAbbr(ev.teams?.home) || null;
+    const away = sgoTeamAbbr(ev.teams?.away) || null;
+    if (!home) continue;
+    games++;
+    const g = state.games.find((x) => x.home === home && (!away || x.away === away));
+    let lines = state.propLines.get(home);
+    for (const o of Object.values(ev.odds || {})) {
+      const price = sgoNum(o.bookOdds, o.fairOdds, o.odds);
+      // Game markets fill gaps ESPN/The Odds API haven't covered.
+      if (!o.playerID && g) {
+        const pt = sgoNum(o.bookSpread, o.fairSpread, o.bookOverUnder, o.fairOverUnder, o.overUnder, o.spread);
+        if (o.betTypeID === "ml" && price !== null) {
+          if (o.sideID === "home" && g.hMl === null) g.hMl = price;
+          if (o.sideID === "away" && g.aMl === null) g.aMl = price;
+        } else if (o.betTypeID === "ou" && o.sideID === "over" && g.ou === null && pt !== null) {
+          g.ou = pt;
+        } else if (o.betTypeID === "sp" && o.sideID === "home" && g.spread === null && pt !== null) {
+          g.spread = pt;
+        }
+        continue;
+      }
+      // Player props -> same structure the edges engine already reads.
+      const market = SGO_STAT_TO_MARKET[o.statID];
+      if (!o.playerID || !market || price === null) continue;
+      const isTd = market === "player_anytime_td";
+      const side = String(o.sideID || "").toLowerCase();
+      if (!isTd && side !== "over") continue;
+      if (isTd && side && !["yes", "over"].includes(side)) continue;
+      const point = isTd ? null : sgoNum(o.bookOverUnder, o.fairOverUnder, o.overUnder);
+      if (!isTd && point === null) continue;
+      if (!lines) { lines = new Map(); state.propLines.set(home, lines); }
+      const key = `${normName(sgoPlayerName(o.playerID))}|${market}`;
+      const cand = { point, price, book: "SGO" };
+      const cur = lines.get(key);
+      if (!cur || cand.price > cur.price) lines.set(key, cand);
+      propCount++;
+    }
+  }
+  state.sgoStatus = games
+    ? `SGO: ${games} games, ${propCount} prop lines loaded.`
+    : "SGO responded but no NFL events parsed — tell the developer what this says.";
+}
+
 const PROP_MARKET_INFO = {
   player_pass_yds: { label: "Passing yards", stat: "pass_yd" },
   player_rush_yds: { label: "Rushing yards", stat: "rush_yd" },
@@ -1839,7 +1934,9 @@ async function loadPropLines(home) {
     data = { ts: Date.now(), json };
     saveJSON(cacheKey, data);
   }
-  const lines = new Map(); // "normName|market" -> {point, price, book}
+  // Merge with any lines another provider (SGO) already loaded for this game,
+  // keeping the best price per prop.
+  const lines = new Map(state.propLines.get(home) || []);
   for (const bk of data.json?.bookmakers || []) {
     const abbr = BOOK_ABBR[bk.key] || bk.title || bk.key;
     for (const m of bk.markets || []) {
@@ -1859,6 +1956,7 @@ async function loadPropLines(home) {
     }
   }
   state.propLines.set(home, lines);
+  state.toaPropsLoaded.add(home);
 }
 
 // Model vs market: compare our league-scored projections to real prop lines.
@@ -2135,10 +2233,8 @@ function renderBetting() {
       ? [fmt(shop.spreadHome, escapeHtml(g.home)), fmt(shop.spreadAway, escapeHtml(g.away)),
          fmt(shop.over, "O"), fmt(shop.under, "U"), fmt(shop.mlHome, "ML")].filter(Boolean).join(" · ")
       : "";
-    const propBtn = shop?.eventId
-      ? (state.propLines.has(g.home)
-        ? ""
-        : `<button class="btn prop-load" data-prop-home="${escapeHtml(g.home)}">📥 Load real prop lines (~4 credits)</button>`)
+    const propBtn = shop?.eventId && !state.toaPropsLoaded.has(g.home)
+      ? `<button class="btn prop-load" data-prop-home="${escapeHtml(g.home)}">📥 Load ${state.propLines.has(g.home) ? "live multi-book" : "real"} prop lines (~4 credits)</button>`
       : "";
     return `<div class="bet-card">
       <div class="bet-head">
@@ -2206,6 +2302,11 @@ function renderOddsSettings() {
   } else {
     quotaEl.textContent = "✅ Key saved — lines will load on the next refresh.";
   }
+  const sgoEl = document.getElementById("sgo-status");
+  if (!sgoEl) return;
+  sgoEl.textContent = !state.sgoKey
+    ? "No SGO key saved yet."
+    : (state.sgoStatus ? `✅ ${state.sgoStatus}` : "✅ Key saved — props will load on the next refresh.");
 }
 
 // ----- ESPN league sync (auto-fetch for public leagues, paste fallback) -----
@@ -2539,6 +2640,24 @@ function initEvents() {
       } catch {
         document.getElementById("odds-quota").textContent =
           "⚠ Couldn't fetch with that key — double-check it (or quota may be exhausted).";
+      }
+    }
+  });
+  const sgoInput = document.getElementById("sgo-key-input");
+  sgoInput.value = state.sgoKey;
+  document.getElementById("sgo-key-save").addEventListener("click", async () => {
+    state.sgoKey = sgoInput.value.trim();
+    localStorage.setItem(SGO_KEY_KEY, state.sgoKey);
+    localStorage.removeItem(SGO_CACHE_KEY);
+    state.sgoStatus = null;
+    renderOddsSettings();
+    if (state.sgoKey) {
+      try {
+        await loadSgo(true);
+        renderBetting();
+      } catch (e2) {
+        state.sgoStatus = `error — ${e2.message} (check the key)`;
+        renderOddsSettings();
       }
     }
   });

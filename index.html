@@ -223,14 +223,20 @@
     <p class="subtitle">Every market, generated from live data: spreads, moneylines, totals, team totals, teasers, props, and parlays — built from Vegas lines, projected stat lines, defense strength, and game-day weather. Ideas, not advice — lines move, always check your book, bet responsibly.</p>
   </div>
   <details class="roster-panel">
-    <summary>🔑 The Odds API — real lines &amp; prop edges</summary>
+    <summary>🔑 Odds providers — real lines &amp; prop edges</summary>
     <div class="espn-sync" style="margin:0 14px 12px">
-      <p class="subtitle">Paste your key from <a href="https://the-odds-api.com" target="_blank" rel="noopener">the-odds-api.com</a> — stored on this device only, never in the app's code. Unlocks multi-book line shopping and real prop lines to compare against our projections. Free tier is 500 credits/month: game lines refresh at most twice a day (3 credits), prop lines load per game on demand (~4 credits).</p>
+      <p class="subtitle"><strong>The Odds API</strong> (<a href="https://the-odds-api.com" target="_blank" rel="noopener">the-odds-api.com</a>) — sharp real-time multi-book line shopping. Free tier 500 credits/mo: game lines twice a day (3 credits), props per game on demand (~4 credits). Keys are stored on this device only, never in the app's code.</p>
       <div class="myteam-tools" style="padding:0">
-        <input type="password" id="odds-key-input" placeholder="Your Odds API key…" autocomplete="off">
+        <input type="password" id="odds-key-input" placeholder="The Odds API key…" autocomplete="off">
         <button id="odds-key-save" class="btn">Save</button>
       </div>
       <div id="odds-quota" class="subtitle"></div>
+      <p class="subtitle" style="margin-top:10px"><strong>SportsGameOdds</strong> (<a href="https://sportsgameodds.com" target="_blank" rel="noopener">sportsgameodds.com</a>) — bills per event, so its free 2,500 objects/mo covers <em>prop lines for the whole weekly slate</em> automatically (10-min delayed odds). Best combo: both keys.</p>
+      <div class="myteam-tools" style="padding:0">
+        <input type="password" id="sgo-key-input" placeholder="SportsGameOdds API key…" autocomplete="off">
+        <button id="sgo-key-save" class="btn">Save</button>
+      </div>
+      <div id="sgo-status" class="subtitle"></div>
     </div>
   </details>
   <div id="betting-edges-wrap" hidden>

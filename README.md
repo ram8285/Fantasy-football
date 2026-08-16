@@ -76,6 +76,16 @@ Quota discipline is built in for the free 500-credit/month tier: game lines cach
 hours and props only load when you ask. Your remaining credits are always shown in the
 settings panel.
 
+### Optional: SportsGameOdds (week-wide prop coverage)
+
+A second provider, [sportsgameodds.com](https://sportsgameodds.com), bills **per event**
+(all markets included), so its free 2,500 objects/month tier is enough to pull prop lines
+for the **entire weekly NFL slate automatically** — no per-game buttons. Its odds are
+10-minute delayed on the free tier, so the two providers complement each other: SGO
+saturates the Prop Edges section all week; The Odds API refreshes a specific game with
+sharp real-time multi-book prices when you're about to bet. When both provide the same
+prop, the app keeps the best price. Both keys live in on-device storage only.
+
 Every feed fails gracefully — if one is down, its section just goes quiet instead of breaking the app.
 A note on Twitter/X: its API now costs $100+/month and blocks unauthenticated reads, so it can't be
 pulled into a free client-side app. The Reddit feeds cover the same breaking-news ground — beat
