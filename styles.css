@@ -439,6 +439,19 @@ span.chip-taken { border-color: var(--danger); color: var(--danger); }
 .bet-lines { font-size: 0.78rem; color: var(--accent-blue); font-weight: 700; }
 .bet-sub { font-size: 0.75rem; color: var(--text-dim); margin-top: 4px; }
 .bet-idea { font-size: 0.85rem; font-weight: 600; margin-top: 6px; color: var(--accent); }
+.market-chip {
+  display: inline-block;
+  font-size: 0.64rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--accent-blue);
+  vertical-align: middle;
+  margin-right: 4px;
+}
 .bet-angles { margin: 8px 0 0 18px; font-size: 0.8rem; line-height: 1.6; }
 
 /* ---------- ESPN sync ---------- */

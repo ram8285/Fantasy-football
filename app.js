@@ -474,6 +474,8 @@ function parseScoreboard(d) {
       ou: typeof odds?.overUnder === "number" ? odds.overUnder : null,
       spread: typeof odds?.spread === "number" ? odds.spread : null,
       details: odds?.details || null,
+      hMl: odds?.homeTeamOdds?.moneyLine ?? null,
+      aMl: odds?.awayTeamOdds?.moneyLine ?? null,
       hTotal, aTotal,
     });
   }
@@ -1521,6 +1523,94 @@ function buildPropIdeas() {
   return ideas.sort((a, b) => b.score - a.score).slice(0, 12);
 }
 
+// Leans across every market — spread, moneyline, total, team total, teaser —
+// each with a conviction score so the strongest float to a Best Bets board.
+function buildMarketLeans() {
+  const leans = [];
+  const defRank = (t) => state.defense.get(t)?.easeRank ?? null; // 1 = allows most points
+  for (const g of state.games) {
+    const label = `${g.away} @ ${g.home}`;
+    const wx = state.weather.get(g.home);
+    const windy = wx && wx.wind >= 18;
+    const rainy = wx && wx.precip >= 60;
+    const sp = g.spread, ou = g.ou;
+    const homeDefR = defRank(g.home), awayDefR = defRank(g.away);
+    const add = (market, pick, why, score) => leans.push({ market, game: label, pick, why, score });
+
+    // --- Totals ---
+    if (windy) {
+      add("Total", `UNDER${ou !== null ? ` ${ou}` : ""}`,
+        [`${wx.wind} mph wind suppresses passing and kicking`, rainy ? `${wx.precip}% rain risk on top` : null].filter(Boolean),
+        3 + (rainy ? 0.5 : 0));
+    } else if (rainy) {
+      add("Total", `UNDER${ou !== null ? ` ${ou}` : ""}`, [`${wx.precip}% rain risk — ball security and short passing games`], 2.2);
+    } else if (ou !== null && homeDefR && awayDefR) {
+      if (homeDefR <= 10 && awayDefR <= 10) {
+        add("Total", `OVER ${ou}`, ["both defenses leak points (top-10 most generous)"], 2.5);
+      } else if (homeDefR >= 23 && awayDefR >= 23) {
+        add("Total", `UNDER ${ou}`, ["two stingy defenses (bottom-10 in points allowed)"], 2.3);
+      }
+    }
+
+    // --- Team totals ---
+    for (const [team, implied, oppDefR] of [[g.home, g.hTotal, awayDefR], [g.away, g.aTotal, homeDefR]]) {
+      if (implied === null) continue;
+      if (implied >= 26 && oppDefR && oppDefR <= 8 && !windy) {
+        add("Team total", `${team} team total OVER`,
+          [`implied ${implied} vs a defense allowing the ${ordinal(oppDefR)}-most points`], 2.6);
+      } else if (implied <= 17 && oppDefR && oppDefR >= 25) {
+        add("Team total", `${team} team total UNDER`,
+          [`implied only ${implied} into a top defense`], 2.2);
+      }
+    }
+
+    // --- Spreads ---
+    if (sp !== null) {
+      const dog = sp < 0 ? g.away : g.home;
+      const dogPts = Math.abs(sp);
+      if (sp > 0) {
+        add("Spread", `${g.home} +${sp}`, ["home underdogs are historically live — crowd, no travel"], 2);
+      }
+      if (ou !== null && ou >= 48 && dogPts >= 7) {
+        add("Spread", `${dog} +${dogPts}`, [`high total (${ou}) + big spread — shootouts keep dogs inside the number`], 2.4);
+      }
+      if (dogPts >= 10 && wx && wx.wind >= 15) {
+        add("Spread", `${dog} +${dogPts}`, ["big favorites sit on leads in bad weather — backdoor territory"], 1.8);
+      }
+
+      // --- Moneylines ---
+      if (sp >= -2.5 && sp < 0) {
+        add("Moneyline", `${g.home} ML`, [`short home favorite (${sp}) — pay less juice than laying the hook`], 1.6);
+      }
+      if (sp > 0 && ou !== null && ou <= 41) {
+        add("Moneyline", `${g.home} ML (upset)`, [`low total (${ou}) = fewer possessions = variance favors the dog`], 2.2);
+      }
+
+      // --- Teasers (Wong: tease through both key numbers 3 and 7) ---
+      if (ou === null || ou <= 49) {
+        if (sp <= -7 && sp >= -8.5) {
+          add("Teaser", `${g.home} ${sp} → ${sp + 6} (6-pt)`, ["Wong spot: favorite teased through both key numbers 7 and 3"], 2.8);
+        }
+        if (sp >= 7 && sp <= 8.5) {
+          add("Teaser", `${g.away} ${-sp} → ${-sp + 6} (6-pt)`, ["Wong spot: favorite teased through both key numbers 7 and 3"], 2.8);
+        }
+        if (sp >= 1.5 && sp <= 2.5) {
+          add("Teaser", `${g.home} +${sp} → +${sp + 6} (6-pt)`, ["Wong spot: dog teased up through 3 and 7"], 2.8);
+        }
+        if (sp <= -1.5 && sp >= -2.5) {
+          add("Teaser", `${g.away} +${-sp} → +${-sp + 6} (6-pt)`, ["Wong spot: dog teased up through 3 and 7"], 2.8);
+        }
+      }
+    }
+  }
+  return leans.sort((a, b) => b.score - a.score);
+}
+
+function ordinal(n) {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
 function gameAngles(g) {
   const angles = [];
   const wx = state.weather.get(g.home);
@@ -1545,8 +1635,30 @@ function gameAngles(g) {
   return angles;
 }
 
-function buildParlays(props) {
+function buildParlays(props, leans) {
   const parlays = [];
+  // Chalk moneyline parlay from the week's heaviest favorites.
+  const favs = state.games
+    .filter((g) => g.spread !== null && Math.abs(g.spread) >= 7)
+    .map((g) => ({ team: g.spread < 0 ? g.home : g.away, ml: g.spread < 0 ? g.hMl : g.aMl, pts: Math.abs(g.spread) }))
+    .sort((a, b) => b.pts - a.pts)
+    .slice(0, 3);
+  if (favs.length >= 2) {
+    parlays.push({
+      title: `Chalk ML parlay: ${favs.map((f) => f.team).join(" + ")}`,
+      legs: favs.map((f) => `${f.team} moneyline${f.ml !== null ? ` (${f.ml > 0 ? "+" : ""}${f.ml})` : ""}`),
+      why: "The week's heaviest favorites just need to win, not cover — stack them for a better combined price.",
+    });
+  }
+  // Two-leg 6-point teaser from the Wong spots.
+  const wong = (leans || []).filter((l) => l.market === "Teaser").slice(0, 2);
+  if (wong.length === 2) {
+    parlays.push({
+      title: "Two-leg 6-pt teaser (Wong spots)",
+      legs: wong.map((l) => `${l.pick} — ${l.game}`),
+      why: "Both legs tease through the key numbers 3 and 7, where NFL games land most often.",
+    });
+  }
   // Same-game stack from the highest-total game.
   const withOu = state.games.filter((g) => g.ou !== null).sort((a, b) => b.ou - a.ou);
   if (withOu.length) {
@@ -1592,24 +1704,55 @@ function buildParlays(props) {
   return parlays;
 }
 
+function leanCard(l) {
+  return `<div class="bet-card">
+    <div class="bet-head">
+      <b><span class="market-chip">${escapeHtml(l.market)}</span> ${escapeHtml(l.pick)}</b>
+      <span class="bet-lines">${escapeHtml(l.game)}</span>
+    </div>
+    <div class="bet-sub">${l.why.map(escapeHtml).join(" · ")}</div>
+  </div>`;
+}
+
 function renderBetting() {
   const gamesEl = document.getElementById("betting-games");
   const propsEl = document.getElementById("betting-props");
   const parlaysEl = document.getElementById("betting-parlays");
+  const bestEl = document.getElementById("betting-best");
+  const linesEl = document.getElementById("betting-lines");
+  const totalsEl = document.getElementById("betting-totals");
+  const teasersEl = document.getElementById("betting-teasers");
   if (!state.games.length) {
-    gamesEl.innerHTML = '<div class="loading">No games on the board (offseason or schedule unavailable).</div>';
+    const quiet = '<div class="loading">No games on the board (offseason or schedule unavailable).</div>';
+    gamesEl.innerHTML = quiet;
+    bestEl.innerHTML = quiet;
+    linesEl.innerHTML = totalsEl.innerHTML = teasersEl.innerHTML = "";
     propsEl.innerHTML = '<div class="loading">Prop ideas appear when weekly projections and lines are live.</div>';
     parlaysEl.innerHTML = "";
     return;
   }
 
+  const leans = buildMarketLeans();
+  const section = (el, filter, empty) => {
+    const list = leans.filter(filter);
+    el.innerHTML = list.length ? list.map(leanCard).join("") : `<div class="loading">${empty}</div>`;
+  };
+  bestEl.innerHTML = leans.slice(0, 8).length
+    ? leans.slice(0, 8).map(leanCard).join("")
+    : '<div class="loading">No strong angles yet — lines may not be posted.</div>';
+  section(linesEl, (l) => l.market === "Spread" || l.market === "Moneyline", "No spread/ML edges stand out this week.");
+  section(totalsEl, (l) => l.market === "Total" || l.market === "Team total", "No totals angles — check back when lines post.");
+  section(teasersEl, (l) => l.market === "Teaser", "No Wong teaser spots this week (need spreads of ±1.5-2.5 or ±7-8.5).");
+
   gamesEl.innerHTML = state.games.map((g) => {
     const wx = state.weather.get(g.home);
     const angles = gameAngles(g);
+    const ml = g.hMl !== null || g.aMl !== null
+      ? ` · ML ${escapeHtml(g.home)} ${g.hMl > 0 ? "+" : ""}${g.hMl ?? "—"} / ${escapeHtml(g.away)} ${g.aMl > 0 ? "+" : ""}${g.aMl ?? "—"}` : "";
     return `<div class="bet-card">
       <div class="bet-head">
         <b>${escapeHtml(g.away)} @ ${escapeHtml(g.home)}</b>
-        <span class="bet-lines">${g.details ? escapeHtml(g.details) + " · " : ""}${g.ou !== null ? `O/U ${g.ou}` : "no line yet"}</span>
+        <span class="bet-lines">${g.details ? escapeHtml(g.details) + " · " : ""}${g.ou !== null ? `O/U ${g.ou}` : "no line yet"}${ml}</span>
       </div>
       <div class="bet-sub">
         ${g.hTotal !== null ? `implied: ${escapeHtml(g.home)} ${g.hTotal} · ${escapeHtml(g.away)} ${g.aTotal}` : ""}
@@ -1632,7 +1775,7 @@ function renderBetting() {
       </div>`).join("")
     : '<div class="loading">Prop ideas need weekly projections — they go live during the season.</div>';
 
-  const parlays = buildParlays(props);
+  const parlays = buildParlays(props, leans);
   parlaysEl.innerHTML = parlays.length
     ? parlays.map((pl) => `<div class="bet-card">
         <div class="bet-head"><b>${escapeHtml(pl.title)}</b></div>
