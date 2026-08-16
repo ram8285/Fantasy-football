@@ -1,0 +1,38 @@
+[
+  {
+    "id": "sample-1",
+    "title": "Star RB limited in practice with hamstring tightness, expected to play Week 1",
+    "link": "",
+    "source": "Sample Data",
+    "published": "2026-08-16T14:00:00Z",
+    "summary": "This is bundled sample data shown because live news feeds were unreachable. Start the app with internet access to pull headlines from ESPN, Yahoo, CBS, RotoBaller, and ProFootballTalk.",
+    "actionable": true
+  },
+  {
+    "id": "sample-2",
+    "title": "Rookie WR climbing the depth chart after strong preseason showing",
+    "link": "",
+    "source": "Sample Data",
+    "published": "2026-08-16T12:30:00Z",
+    "summary": "Sample headline. Live feeds refresh automatically every 5 minutes when the app is online.",
+    "actionable": true
+  },
+  {
+    "id": "sample-3",
+    "title": "Veteran QB named Week 1 starter after camp battle",
+    "link": "",
+    "source": "Sample Data",
+    "published": "2026-08-16T11:00:00Z",
+    "summary": "Sample headline demonstrating the news layout.",
+    "actionable": true
+  },
+  {
+    "id": "sample-4",
+    "title": "Training camp notebook: winners and losers from Saturday's joint practices",
+    "link": "",
+    "source": "Sample Data",
+    "published": "2026-08-16T09:15:00Z",
+    "summary": "Non-actionable sample headline (no injury/transaction keywords), rendered without the alert badge.",
+    "actionable": false
+  }
+]

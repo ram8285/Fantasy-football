@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fantasy Football Hub</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>🏈 Fantasy Football Hub</h1>
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-tab="news">📰 News</button>
+      <button class="tab" data-tab="rankings">📊 Rankings</button>
+      <button class="tab" data-tab="draft">📋 Draft Board</button>
+      <button class="tab" data-tab="waivers">🔥 Waiver Wire</button>
+    </nav>
+  </header>
+
+  <div id="offline-banner" class="banner hidden">
+    ⚠️ Live data sources unreachable — showing bundled sample data. Check your internet connection.
+  </div>
+
+  <main>
+    <!-- NEWS -->
+    <section id="panel-news" class="panel">
+      <div class="controls">
+        <input type="search" id="news-search" placeholder="Filter news (player, team, keyword)…" />
+        <label class="checkbox"><input type="checkbox" id="news-actionable" /> Actionable only (injuries, trades, depth chart)</label>
+        <span class="refresh-note" id="news-updated"></span>
+      </div>
+      <div id="news-list" class="card-list"><p class="loading">Loading news…</p></div>
+    </section>
+
+    <!-- RANKINGS -->
+    <section id="panel-rankings" class="panel hidden">
+      <div class="controls">
+        <div class="pos-filter" id="pos-filter">
+          <button class="pos active" data-pos="ALL">All</button>
+          <button class="pos" data-pos="QB">QB</button>
+          <button class="pos" data-pos="RB">RB</button>
+          <button class="pos" data-pos="WR">WR</button>
+          <button class="pos" data-pos="TE">TE</button>
+          <button class="pos" data-pos="K">K</button>
+          <button class="pos" data-pos="DEF">DEF</button>
+        </div>
+        <input type="search" id="rankings-search" placeholder="Search player…" />
+      </div>
+      <div id="rankings-list"><p class="loading">Loading rankings…</p></div>
+    </section>
+
+    <!-- DRAFT BOARD -->
+    <section id="panel-draft" class="panel hidden">
+      <div class="draft-layout">
+        <div class="draft-main">
+          <div class="controls">
+            <input type="search" id="draft-search" placeholder="Search best available…" />
+            <div class="pos-filter" id="draft-pos-filter">
+              <button class="pos active" data-pos="ALL">All</button>
+              <button class="pos" data-pos="QB">QB</button>
+              <button class="pos" data-pos="RB">RB</button>
+              <button class="pos" data-pos="WR">WR</button>
+              <button class="pos" data-pos="TE">TE</button>
+              <button class="pos" data-pos="K">K</button>
+              <button class="pos" data-pos="DEF">DEF</button>
+            </div>
+            <button id="draft-undo" class="btn small">↩ Undo</button>
+            <button id="draft-reset" class="btn small danger">Reset draft</button>
+          </div>
+          <div id="draft-suggestion" class="suggestion hidden"></div>
+          <div id="draft-list"><p class="loading">Loading draft board…</p></div>
+        </div>
+        <aside class="draft-side">
+          <h3>My Team</h3>
+          <div id="my-roster"></div>
+          <h3>Draft Log</h3>
+          <div id="draft-log" class="draft-log"></div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- WAIVER WIRE -->
+    <section id="panel-waivers" class="panel hidden">
+      <p class="section-note">Most added and dropped players across all Sleeper leagues in the last 24 hours — a strong proxy for who the fantasy world is reacting to, no Twitter required. FAAB = suggested % of waiver budget to bid.</p>
+      <div class="waiver-cols">
+        <div>
+          <h3 class="add-header">📈 Trending Adds</h3>
+          <div id="waiver-adds" class="card-list"><p class="loading">Loading…</p></div>
+        </div>
+        <div>
+          <h3 class="drop-header">📉 Trending Drops</h3>
+          <div id="waiver-drops" class="card-list"><p class="loading">Loading…</p></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
