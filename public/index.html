@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fantasy Football HQ</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏈</text></svg>">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-icon">🏈</span>
+      <div>
+        <h1>Fantasy Football HQ</h1>
+        <p class="tagline" id="season-line">Your no-social-media fantasy command center</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span class="updated" id="last-updated"></span>
+      <button class="btn" id="refresh-btn" title="Refresh all data">↻ Refresh</button>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="news" role="tab">📰 News</button>
+    <button class="tab" data-tab="rankings" role="tab">📊 Rankings</button>
+    <button class="tab" data-tab="draft" role="tab">🧢 Draft Kit</button>
+    <button class="tab" data-tab="waivers" role="tab">📈 Waiver Wire</button>
+  </nav>
+
+  <main>
+    <!-- ============================ NEWS ============================ -->
+    <section class="panel active" id="panel-news">
+      <div class="toolbar">
+        <input type="search" id="news-search" class="search" placeholder="Filter news… (player, team, keyword)">
+        <div class="chips" id="news-sources"></div>
+      </div>
+      <div class="notice" id="news-notice" hidden></div>
+      <div class="news-list" id="news-list">
+        <div class="loading">Loading news…</div>
+      </div>
+    </section>
+
+    <!-- ========================== RANKINGS ========================== -->
+    <section class="panel" id="panel-rankings">
+      <div class="toolbar">
+        <input type="search" id="rank-search" class="search" placeholder="Search players…">
+        <div class="chips" id="rank-positions"></div>
+      </div>
+      <div class="notice" id="rank-notice" hidden></div>
+      <div class="table-wrap">
+        <table class="rank-table" id="rank-table">
+          <thead>
+            <tr><th>#</th><th>Player</th><th>Pos</th><th>Team</th><th>Age</th><th>Exp</th><th>Status</th><th>Hot</th></tr>
+          </thead>
+          <tbody id="rank-body">
+            <tr><td colspan="8" class="loading">Loading rankings…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="footnote">Rankings use Sleeper's overall fantasy relevance ordering. 🔥 marks players trending on the waiver wire in the last 24 hours.</p>
+    </section>
+
+    <!-- ========================== DRAFT KIT ========================== -->
+    <section class="panel" id="panel-draft">
+      <div class="draft-grid">
+        <div class="draft-main">
+          <div class="toolbar">
+            <input type="search" id="draft-search" class="search" placeholder="Search players…">
+            <div class="chips" id="draft-positions"></div>
+            <label class="toggle"><input type="checkbox" id="hide-drafted"> Hide drafted</label>
+          </div>
+          <div class="table-wrap">
+            <table class="rank-table draft-table">
+              <thead>
+                <tr><th>#</th><th>Player</th><th>Pos</th><th>Team</th><th>Status</th><th class="actions-col">Draft</th></tr>
+              </thead>
+              <tbody id="draft-body">
+                <tr><td colspan="6" class="loading">Loading cheat sheet…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <aside class="draft-side">
+          <div class="card">
+            <h3>My Roster <button class="btn btn-small btn-danger" id="reset-draft">Reset draft</button></h3>
+            <div id="roster-needs" class="roster-needs"></div>
+            <ul class="my-roster" id="my-roster"></ul>
+          </div>
+          <div class="card">
+            <h3>Snake Pick Calculator</h3>
+            <div class="calc-row">
+              <label>Teams <input type="number" id="calc-teams" min="4" max="20" value="12"></label>
+              <label>My slot <input type="number" id="calc-slot" min="1" max="20" value="5"></label>
+              <label>Rounds <input type="number" id="calc-rounds" min="1" max="30" value="15"></label>
+            </div>
+            <div class="pick-list" id="pick-list"></div>
+          </div>
+          <div class="card tips">
+            <h3>Draft Tips</h3>
+            <ul>
+              <li>Rounds 1–5: lock in RB/WR volume; elite TE or QB only if value falls.</li>
+              <li>Wait on K and DEF until your last two picks.</li>
+              <li>Target upside (young players, new starters) on your bench.</li>
+              <li>Check the Status column — avoid drafting injured players early.</li>
+            </ul>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ========================= WAIVER WIRE ========================= -->
+    <section class="panel" id="panel-waivers">
+      <div class="notice" id="waiver-notice" hidden></div>
+      <div class="waiver-grid">
+        <div class="card">
+          <h3>🔥 Most Added (last 24h)</h3>
+          <p class="cardsub">What managers across all Sleeper leagues are grabbing right now — your replacement for waiver-wire Twitter.</p>
+          <ol class="trend-list" id="trend-adds"><li class="loading">Loading…</li></ol>
+        </div>
+        <div class="card">
+          <h3>🧊 Most Dropped (last 24h)</h3>
+          <p class="cardsub">Players being cut league-wide. Injured stars appearing here can be a buy-low stash.</p>
+          <ol class="trend-list" id="trend-drops"><li class="loading">Loading…</li></ol>
+        </div>
+      </div>
+      <div class="card">
+        <h3>FAAB Bidding Guide</h3>
+        <div class="faab-grid">
+          <div><strong>League-winner upside</strong> (new starting RB after injury): <span class="faab">30–60%</span></div>
+          <div><strong>Clear weekly starter</strong> (top-10 added, locked role): <span class="faab">15–30%</span></div>
+          <div><strong>Solid flex / streamer</strong> (role player, favorable schedule): <span class="faab">5–12%</span></div>
+          <div><strong>Speculative stash</strong> (handcuffs, hype adds): <span class="faab">1–5%</span></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    Data: <a href="https://docs.sleeper.com" target="_blank" rel="noopener">Sleeper API</a> + public NFL news feeds ·
+    News auto-refreshes every 5 minutes · No accounts, no social media required.
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
