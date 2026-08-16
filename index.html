@@ -40,7 +40,7 @@
 <section id="tab-news" class="tab-panel active">
   <div class="panel-head">
     <h2>Live NFL News</h2>
-    <p class="subtitle">Straight from ESPN's wire — no Twitter needed. Pull to see what to act on.</p>
+    <p class="subtitle">One merged feed: ESPN's wire + <strong>r/fantasyfootball</strong> and <strong>r/nfl</strong> — where news breaks before the articles get written. No Twitter needed.</p>
   </div>
   <div id="news-notify-note" class="notify-note"></div>
   <div id="news-list" class="card-list">
@@ -111,6 +111,16 @@
   <div class="panel-head">
     <h2>Draft Assistant</h2>
     <p class="subtitle">Board is ordered for your <strong>2-QB, 6-pt-pass-TD league</strong> — don't panic when it shows QBs way above other apps; that's the point. Tap <span class="chip chip-mine">MINE</span> when you pick a player, <span class="chip chip-taken">GONE</span> when someone else does.</p>
+  </div>
+
+  <div class="advisor-card">
+    <div class="advisor-head">
+      <h3>🧭 Pick Advisor</h3>
+      <label class="slot-picker">My draft slot
+        <select id="draft-slot"></select>
+      </label>
+    </div>
+    <div id="advisor-body" class="advisor-body"><div class="loading">Loading…</div></div>
   </div>
 
   <div class="draft-summary">
