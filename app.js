@@ -72,8 +72,15 @@ const LEAGUE_SCORING = {
     ["1pt Safety (1PSF)", "1"],
   ],
   "Miscellaneous": [
+    ["Kickoff Return TD (KRTD)", "6"],
+    ["Punt Return TD (PRTD)", "6"],
     ["Fumble Recovered for TD (FTD)", "6"],
     ["Total Fumbles Lost (FUML)", "-2"],
+    ["Interception Return TD (INTTD)", "6"],
+    ["Fumble Return TD (FRTD)", "6"],
+    ["Blocked Punt or FG return for TD (BLKKRTD)", "6"],
+    ["2pt Return (2PTRET)", "2"],
+    ["1pt Safety (1PSF)", "1"],
   ],
 };
 
