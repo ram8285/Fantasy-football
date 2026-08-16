@@ -200,6 +200,16 @@ main { max-width: 900px; margin: 0 auto; padding: 16px; }
 .pos-K  { background: rgba(189, 147, 249, 0.18); color: #bd93f9; }
 .pos-DEF { background: rgba(241, 250, 140, 0.15); color: #f1fa8c; }
 
+.mkt-note {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 20px;
+  background: rgba(110, 118, 129, 0.2);
+  color: var(--text-dim);
+}
+.mkt-note.mkt-up { background: rgba(63, 185, 80, 0.15); color: var(--accent); }
+
 .trend-badge {
   font-size: 0.68rem;
   font-weight: 700;

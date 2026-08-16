@@ -91,7 +91,7 @@ const STRATEGY_NOTES = [
   },
   {
     title: "The OP slot = start TWO quarterbacks",
-    body: "Your utility (OP) slot accepts any offensive player — including a QB. Combined with 6-point passing TDs, a second QB is almost always the best use of that slot. Treat this like a Superflex league: back-end QB1s and top QB2s are far more valuable than consensus rankings say.",
+    body: "Your utility (OP) slot accepts any offensive player — including a QB. Combined with 6-point passing TDs, a second QB is almost always the best use of that slot. This app's Rankings and Draft boards are already re-ranked for that reality (the '▲ market #N' badge shows how far standard apps underrate a player here). With 10 teams starting 2 QBs, 20 QBs have starter value — leaguemates drafting off default rankings will let QBs slide. Take them.",
   },
   {
     title: "Half-PPR (0.5 per catch)",
@@ -266,13 +266,44 @@ function updateRankSnapshot(players) {
   saveJSON(RANKSNAP_KEY, { ts: now, ranks });
 }
 
+// Re-rank the board for THIS league's reality: a QB slot plus an OP slot that
+// takes QBs = a 2-QB league, and passing TDs are worth 6. Consensus ranks are
+// built for 1-QB leagues, so QBs get pulled up to superflex-calibrated slots
+// while everyone else keeps their relative order. Each player keeps:
+//   mrank — standard 1-QB market rank (what leaguemates' apps show)
+//   lrank — this league's adjusted rank (what the player is worth HERE)
+function applyLeagueRanks(players) {
+  players.forEach((p, i) => { p.mrank = i + 1; });
+  const qbs = players.filter((p) => p.pos === "QB");
+  const others = players.filter((p) => p.pos !== "QB");
+  // Target overall slot for the r-th QB (10-team, 20 starting QB slots,
+  // 6-pt pass TDs): ~QB1 #1 overall, QB10 ~#17, QB20 ~#35, then a fast fade.
+  const qbSlot = (r) => {
+    if (r <= 20) return Math.max(1, Math.round(1.8 * r - 0.8));
+    if (r <= 30) return 36 + (r - 20) * 4;
+    return 76 + (r - 30) * 8;
+  };
+  const merged = [];
+  let qi = 0, oi = 0;
+  while (qi < qbs.length || oi < others.length) {
+    const slot = merged.length + 1;
+    if (qi < qbs.length && (qbSlot(qi + 1) <= slot || oi >= others.length)) {
+      merged.push(qbs[qi++]);
+    } else {
+      merged.push(others[oi++]);
+    }
+  }
+  merged.forEach((p, i) => { p.lrank = i + 1; });
+  return merged;
+}
+
 async function loadAll(force = false) {
   setUpdatedAt("updating…");
 
   const jobs = [
     loadPlayers(force)
       .then((players) => {
-        state.players = players;
+        state.players = applyLeagueRanks(players);
         state.byId = new Map(players.map((p) => [p.id, p]));
       })
       .catch((e) => showError("rankings-list", "Couldn't load player data", e)),
@@ -510,6 +541,14 @@ function trendBadges(id) {
   return out;
 }
 
+// "market #N" note: where standard 1-QB consensus ranks a player vs this
+// league's board. A green ▲ means leaguemates likely undervalue them here.
+function marketNote(p) {
+  if (!p.mrank || !p.lrank || Math.abs(p.mrank - p.lrank) < 5) return "";
+  const up = p.mrank > p.lrank;
+  return `<span class="mkt-note ${up ? "mkt-up" : ""}">${up ? "▲" : "▽"} market #${p.mrank}</span>`;
+}
+
 function playerRow(p, index, { withActions } = {}) {
   const status = state.draft[p.id];
   const cls = status === "mine" ? "is-mine" : status === "taken" ? "is-taken" : "";
@@ -527,6 +566,7 @@ function playerRow(p, index, { withActions } = {}) {
       <div class="player-sub">
         <span class="pos-tag pos-${p.pos}">${p.pos === "DEF" ? "D/ST" : p.pos}${posRank(p)}</span>
         <span>${escapeHtml(p.team)}</span>
+        ${marketNote(p)}
         ${injury}
         ${trendBadges(p.id)}
       </div>
@@ -610,7 +650,8 @@ function renderScarcity() {
   const el = document.getElementById("scarcity");
   let html = "";
   for (const pos of POSITIONS) {
-    const tierSize = (pos === "RB" || pos === "WR") ? 24 : 12;
+    // QB tier = 20: this is a 2-QB league (10 teams × QB + OP slots).
+    const tierSize = pos === "QB" ? 20 : (pos === "RB" || pos === "WR") ? 24 : 12;
     const top = state.players.filter((p) => p.pos === pos).slice(0, tierSize);
     const left = top.filter((p) => !state.draft[p.id]).length;
     const hot = left <= Math.ceil(tierSize / 4);
@@ -640,6 +681,7 @@ function renderWaivers() {
           <div class="player-sub">
             <span class="pos-tag pos-${p.pos}">${p.pos === "DEF" ? "D/ST" : p.pos}</span>
             <span>${escapeHtml(p.team)}</span>
+            ${p.pos === "QB" ? '<span class="trend-badge trend-add">2-QB league value</span>' : ""}
             ${p.injury ? `<span class="trend-badge trend-drop">${escapeHtml(p.injury)}</span>` : ""}
           </div>
         </div>
@@ -683,8 +725,10 @@ function playerScore(p) {
   let proj = state.projections.get(p.id);
   let source = "proj";
   if (proj === undefined) {
-    // Rough fallback so the optimizer still orders players sensibly.
-    proj = Math.max(1, Math.round((20 - 14 * Math.log10(1 + p.rank / 12)) * 10) / 10);
+    // Rough fallback so the optimizer still orders players sensibly — uses the
+    // league-adjusted rank so QBs get their 2-QB/6-pt-TD value.
+    const r = p.lrank || p.rank;
+    proj = Math.max(1, Math.round((20 - 14 * Math.log10(1 + r / 12)) * 10) / 10);
     source = "rank";
   }
   if (injOut) return { proj, adjusted: 0, matchup: m, source: "out" };
@@ -854,7 +898,8 @@ function renderSleepers() {
           <div class="player-sub">
             <span class="pos-tag pos-${x.p.pos}">${x.p.pos === "DEF" ? "D/ST" : x.p.pos}${posRank(x.p)}</span>
             <span>${escapeHtml(x.p.team)}</span>
-            <span>ranked #${x.p.rank} overall — flying under the radar</span>
+            ${x.p.pos === "QB" ? '<span class="trend-badge trend-add">2-QB league value</span>' : ""}
+            <span>market #${x.p.mrank || x.p.rank} — flying under the radar</span>
           </div>
         </div>
         <div class="waiver-count"><b>${x.count.toLocaleString()}</b><small>adds · 24h</small></div>
