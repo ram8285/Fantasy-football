@@ -162,6 +162,22 @@ const ADP_URL = "https://fantasyfootballcalculator.com/api/v1/adp/2qb?teams=10";
 // ESPN and Sleeper agree on team codes except Washington.
 const ESPN_TO_SLEEPER = { WSH: "WAS" };
 
+// The user's NFL team — powers the dedicated team tab. Change these five
+// values to follow a different franchise.
+const MY_NFL_TEAM = {
+  name: "Buffalo Bills",
+  sleeper: "BUF",
+  espnId: 2,          // ESPN team id
+  espnSlug: "buf",
+  subreddit: "buffalobills",
+  emoji: "🦬",
+};
+const TEAM_NEWS_URL = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/news?limit=30&team=${MY_NFL_TEAM.espnId}`;
+const TEAM_INFO_URL = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${MY_NFL_TEAM.espnSlug}`;
+const TEAM_SCHEDULE_URL = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${MY_NFL_TEAM.espnSlug}/schedule`;
+const TEAM_REDDIT_URL = `https://www.reddit.com/r/${MY_NFL_TEAM.subreddit}/hot.json?limit=25`;
+const TEAM_WORD_RE = new RegExp(`\\b(bills|buffalo)\\b`, "i");
+
 // Stadium locations for game-day weather (Open-Meteo, free, no key).
 // dome:true = weather ignored (incl. retractable roofs).
 const STADIUMS = {
@@ -224,6 +240,11 @@ const state = {
   espnCfg: loadJSON(ESPN_SYNC_KEY, { leagueId: "1767084290", teamId: null, teamName: null }),
   espn: null,             // {teams, rosteredIds, opponent, currentMatchupPeriod}
   espnError: null,
+  teamNews: [],           // ESPN articles filtered to MY_NFL_TEAM
+  teamReddit: [],         // team subreddit posts
+  teamInfo: null,         // {record, standing}
+  teamSchedule: [],       // [{date, shortName, result}]
+  injuryByTeam: new Map(),// team abbr -> [{name, status, comment}]
   dvp: null,              // def team -> {QB:rank, RB:rank, WR:rank, TE:rank} 1=easiest
   draftSlot: loadJSON(DRAFT_SLOT_KEY, 5),
   draft: loadDraft(),     // { [playerId]: "mine" | "taken" }
@@ -414,6 +435,52 @@ async function loadAll(force = false) {
       .catch(() => { /* injury report unavailable */ }),
 
     loadAdp().catch(() => { /* ADP unavailable */ }),
+
+    // --- The user's NFL team feeds ---
+    fetchJSON(TEAM_NEWS_URL)
+      .then((d) => { state.teamNews = d.articles || []; })
+      .catch(() => { /* team news unavailable */ }),
+
+    fetchJSON(TEAM_REDDIT_URL)
+      .then((d) => {
+        state.teamReddit = (d?.data?.children || [])
+          .map((c) => c.data)
+          .filter((p) => p && !p.stickied && !p.over_18)
+          .map((p) => ({
+            title: p.title,
+            url: `https://www.reddit.com${p.permalink}`,
+            ts: p.created_utc * 1000,
+            score: p.ups || 0,
+            flair: p.link_flair_text || "",
+          }));
+      })
+      .catch(() => { /* team subreddit unavailable */ }),
+
+    fetchJSON(TEAM_INFO_URL)
+      .then((d) => {
+        state.teamInfo = {
+          record: d?.team?.record?.items?.[0]?.summary || null,
+          standing: d?.team?.standingSummary || null,
+        };
+      })
+      .catch(() => { /* team info unavailable */ }),
+
+    fetchJSON(TEAM_SCHEDULE_URL)
+      .then((d) => {
+        state.teamSchedule = (d?.events || []).map((ev) => {
+          const comp = ev.competitions?.[0];
+          const us = comp?.competitors?.find((c) => c.team?.abbreviation &&
+            normTeam(c.team.abbreviation) === MY_NFL_TEAM.sleeper);
+          const them = comp?.competitors?.find((c) => c !== us);
+          let result = null;
+          if (us?.winner === true) result = "W";
+          else if (us?.winner === false && them?.winner === true) result = "L";
+          const score = us?.score?.displayValue && them?.score?.displayValue
+            ? `${us.score.displayValue}-${them.score.displayValue}` : null;
+          return { date: ev.date, shortName: ev.shortName || ev.name || "", result, score };
+        });
+      })
+      .catch(() => { /* schedule unavailable */ }),
   ];
 
   await Promise.allSettled(jobs);
@@ -528,11 +595,20 @@ function parseReddit(d, tag) {
 let injuryReport = new Map();
 function parseInjuries(d) {
   injuryReport = new Map();
+  state.injuryByTeam = new Map();
   for (const team of d?.injuries || []) {
+    const abbr = normTeam(team.team?.abbreviation || team.abbreviation || null);
     for (const inj of team.injuries || []) {
       const name = inj.athlete?.displayName;
       const status = inj.status || inj.type?.description;
-      if (name && status) injuryReport.set(normName(name), status);
+      if (name && status) {
+        injuryReport.set(normName(name), status);
+        if (abbr) {
+          const arr = state.injuryByTeam.get(abbr) || [];
+          arr.push({ name, status, comment: inj.shortComment || inj.longComment || "" });
+          state.injuryByTeam.set(abbr, arr);
+        }
+      }
     }
   }
 }
@@ -764,6 +840,7 @@ function renderAll() {
   renderStartSit();
   renderSleepers();
   renderBetting();
+  renderBills();
 }
 
 // ----- News -----
@@ -1106,6 +1183,121 @@ function renderWaivers() {
   renderCol("waiver-drops", state.trendingDrop, "drops");
 }
 
+// ----- My NFL team tab (Bills HQ) -----
+function renderBills() {
+  const T = MY_NFL_TEAM.sleeper;
+
+  // Header: record, standing, next game with line + weather.
+  const headEl = document.getElementById("bills-header");
+  const game = state.schedule.get(T);
+  const g = state.games.find((x) => x.home === T || x.away === T);
+  let next = "";
+  if (game) {
+    const vs = `${game.homeAway === "home" ? "vs" : "@"} ${game.opp}`;
+    const kick = new Date(game.date);
+    const line = g && g.details ? ` · ${g.details}${g.ou !== null ? ` · O/U ${g.ou}` : ""}` : "";
+    const wx = state.weather.get(game.homeAway === "home" ? T : game.opp);
+    next = `This week: <b>${vs}</b> · ${kick.toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}${line}` +
+      (typeof game.implied === "number" ? ` · implied ${game.implied} pts` : "") +
+      (wx ? ` · ${wx.wind}mph ${wx.temp}°F` : "");
+  } else if (state.schedule.size) {
+    next = "This week: <b>BYE</b> — rest up for the stretch run.";
+  }
+  headEl.innerHTML = `<div class="bet-card">
+    <div class="bet-head"><b>${MY_NFL_TEAM.emoji} ${MY_NFL_TEAM.name}</b>
+      <span class="bet-lines">${state.teamInfo?.record ? escapeHtml(state.teamInfo.record) : ""}${state.teamInfo?.standing ? ` · ${escapeHtml(state.teamInfo.standing)}` : ""}</span>
+    </div>
+    ${next ? `<div class="bet-sub">${next}</div>` : ""}
+  </div>`;
+
+  // Injury report (official, via ESPN).
+  const injEl = document.getElementById("bills-injuries");
+  const inj = state.injuryByTeam.get(T) || [];
+  injEl.innerHTML = inj.length
+    ? inj.map((i) => `<div class="player-row">
+        <div class="player-info">
+          <div class="player-name">${escapeHtml(i.name)}</div>
+          ${i.comment ? `<div class="player-sub"><span>${escapeHtml(i.comment)}</span></div>` : ""}
+        </div>
+        <span class="trend-badge trend-drop">${escapeHtml(i.status)}</span>
+      </div>`).join("")
+    : '<div class="loading">No Bills on the injury report right now. 🙏</div>';
+
+  // Schedule: recent results + next few games.
+  const schedEl = document.getElementById("bills-schedule");
+  if (state.teamSchedule.length) {
+    const now = Date.now();
+    const past = state.teamSchedule.filter((e) => new Date(e.date).getTime() < now).slice(-3);
+    const future = state.teamSchedule.filter((e) => new Date(e.date).getTime() >= now).slice(0, 4);
+    schedEl.innerHTML = [...past, ...future].map((e) => `<div class="player-row">
+      <div class="player-info"><div class="player-name">${escapeHtml(e.shortName)}</div>
+        <div class="player-sub"><span>${new Date(e.date).toLocaleDateString([], { month: "short", day: "numeric" })}</span></div>
+      </div>
+      ${e.result ? `<span class="trend-badge ${e.result === "W" ? "trend-add" : "trend-drop"}">${e.result}${e.score ? ` ${escapeHtml(e.score)}` : ""}</span>` : ""}
+    </div>`).join("");
+  } else {
+    schedEl.innerHTML = '<div class="loading">Schedule unavailable.</div>';
+  }
+
+  // Bills players moving on the fantasy wire.
+  const trendEl = document.getElementById("bills-trending");
+  const trending = [...state.trendMap.entries()]
+    .map(([id, t]) => ({ p: state.byId.get(id), t }))
+    .filter((x) => x.p && x.p.team === T);
+  trendEl.innerHTML = trending.length
+    ? trending.map((x) => `<div class="player-row">
+        <div class="player-info"><div class="player-name">${escapeHtml(x.p.name)}</div>
+          <div class="player-sub"><span class="pos-tag pos-${x.p.pos}">${x.p.pos}</span>${trendBadges(x.p.id)}</div>
+        </div>
+      </div>`).join("")
+    : '<div class="loading">No Bills players trending in the last 24h.</div>';
+
+  // Merged all-Bills news: team wire + team subreddit + Bills posts from the
+  // league-wide feeds, deduped and time-sorted.
+  const newsEl = document.getElementById("bills-news");
+  const items = [
+    ...state.teamNews.map((a) => ({
+      title: a.headline, desc: a.description || "",
+      url: a.links?.web?.href || "#", ts: new Date(a.published).getTime(),
+      tag: "ESPN", extra: "",
+    })),
+    ...state.teamReddit.map((p) => ({
+      title: p.title, desc: p.flair ? `[${p.flair}]` : "",
+      url: p.url, ts: p.ts, tag: `r/${MY_NFL_TEAM.subreddit}`, extra: `▲ ${p.score.toLocaleString()}`,
+    })),
+    ...state.news.filter((a) => TEAM_WORD_RE.test(a.headline + " " + (a.description || ""))).map((a) => ({
+      title: a.headline, desc: a.description || "",
+      url: a.links?.web?.href || "#", ts: new Date(a.published).getTime(),
+      tag: "ESPN", extra: "",
+    })),
+    ...state.reddit.filter((p) => TEAM_WORD_RE.test(p.title)).map((p) => ({
+      title: p.title, desc: "", url: p.url, ts: p.ts, tag: p.tag, extra: `▲ ${p.score.toLocaleString()}`,
+    })),
+  ];
+  const seenTitles = new Set();
+  const deduped = items
+    .filter((it) => {
+      const key = normName(it.title).slice(0, 60);
+      if (seenTitles.has(key)) return false;
+      seenTitles.add(key);
+      return true;
+    })
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, 50);
+  newsEl.innerHTML = deduped.length
+    ? deduped.map((it) => `<a class="news-card" href="${escapeHtml(it.url)}" target="_blank" rel="noopener">
+        <h3>${escapeHtml(it.title)}</h3>
+        ${it.desc ? `<p>${escapeHtml(it.desc)}</p>` : ""}
+        <div class="news-meta">
+          <span class="src-badge src-${it.tag === "ESPN" ? "espn" : "reddit"}">${escapeHtml(it.tag)}</span>
+          <span>${timeAgo(it.ts)}</span>
+          ${it.extra ? `<span>${escapeHtml(it.extra)}</span>` : ""}
+          ${INJURY_RE.test(it.title + " " + it.desc) ? '<span class="news-badge">⚕ injury-related</span>' : ""}
+        </div>
+      </a>`).join("")
+    : '<div class="loading">No Bills news right now.</div>';
+}
+
 // ----- Start/Sit & lineup optimizer -----
 
 // Matchup context for a player's NFL team this week. Position-specific
@@ -1430,6 +1622,8 @@ function maybeNotify() {
   const headlines = [
     ...state.news.map((a) => ({ text: a.headline, body: a.description || "" })),
     ...state.reddit.map((p) => ({ text: p.title, body: p.flair || "" })),
+    ...state.teamNews.map((a) => ({ text: a.headline, body: a.description || "" })),
+    ...state.teamReddit.map((p) => ({ text: p.title, body: p.flair || "" })),
   ];
   for (const h of headlines) {
     const key = (h.text || "").slice(0, 120);

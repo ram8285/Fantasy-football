@@ -25,6 +25,7 @@
   </div>
   <nav class="tabs">
     <button class="tab active" data-tab="news">📰 News</button>
+    <button class="tab" data-tab="myteam-nfl">🦬 Bills</button>
     <button class="tab" data-tab="startsit">🧠 Start/Sit</button>
     <button class="tab" data-tab="sleepers">💎 Sleepers</button>
     <button class="tab" data-tab="rankings">📊 Rankings</button>
@@ -47,6 +48,29 @@
   <div id="news-list" class="card-list">
     <div class="loading">Loading news…</div>
   </div>
+</section>
+
+<!-- ==================== MY NFL TEAM (Bills) ==================== -->
+<section id="tab-myteam-nfl" class="tab-panel">
+  <div class="panel-head">
+    <h2>🦬 Buffalo Bills HQ</h2>
+    <p class="subtitle">Everything Bills, fantasy-related or not — ESPN's team wire, r/buffalobills, Bills posts from r/nfl, the official injury report, and the schedule. Go Bills.</p>
+  </div>
+  <div id="bills-header" class="card-list" style="margin-bottom:14px"></div>
+  <details class="roster-panel" open>
+    <summary>⚕ Injury Report</summary>
+    <div id="bills-injuries" class="card-list" style="padding:4px 14px 14px"></div>
+  </details>
+  <details class="roster-panel">
+    <summary>📅 Schedule</summary>
+    <div id="bills-schedule" class="card-list" style="padding:4px 14px 14px"></div>
+  </details>
+  <details class="roster-panel">
+    <summary>📈 Bills players trending in fantasy</summary>
+    <div id="bills-trending" class="card-list" style="padding:4px 14px 14px"></div>
+  </details>
+  <h3 class="waiver-head" style="margin-top:16px">📰 All Bills news</h3>
+  <div id="bills-news" class="card-list"><div class="loading">Loading…</div></div>
 </section>
 
 <!-- ==================== START/SIT ==================== -->
