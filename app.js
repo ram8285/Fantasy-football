@@ -216,6 +216,7 @@ const state = {
   reddit: [],             // merged reddit posts [{title, url, ts, tag, score}]
   adp: new Map(),         // normalized name -> {adp, posAdp}
   weather: new Map(),     // home team -> {wind, precip, temp}
+  games: [],              // [{home, away, date, ou, spread, details}]
   dvp: null,              // def team -> {QB:rank, RB:rank, WR:rank, TE:rank} 1=easiest
   draftSlot: loadJSON(DRAFT_SLOT_KEY, 5),
   draft: loadDraft(),     // { [playerId]: "mine" | "taken" }
@@ -440,6 +441,7 @@ function parseScoreboard(d) {
   state.seasonYear = d.season?.year || null;
   state.seasonType = d.season?.type ?? null;
   state.schedule = new Map();
+  state.games = [];
   for (const ev of d.events || []) {
     const comp = ev.competitions?.[0];
     if (!comp) continue;
@@ -459,6 +461,13 @@ function parseScoreboard(d) {
     }
     state.schedule.set(h, { opp: a, homeAway: "home", date: ev.date, implied: hTotal });
     state.schedule.set(a, { opp: h, homeAway: "away", date: ev.date, implied: aTotal });
+    state.games.push({
+      home: h, away: a, date: ev.date,
+      ou: typeof odds?.overUnder === "number" ? odds.overUnder : null,
+      spread: typeof odds?.spread === "number" ? odds.spread : null,
+      details: odds?.details || null,
+      hTotal, aTotal,
+    });
   }
 }
 
@@ -744,6 +753,7 @@ function renderAll() {
   renderWaivers();
   renderStartSit();
   renderSleepers();
+  renderBetting();
 }
 
 // ----- News -----
@@ -1420,6 +1430,221 @@ function maybeNotify() {
   });
 }
 
+// ----- Betting: prop & parlay ideas from live data -----
+// No free API serves prop LINES, so this generates prop ANGLES: projected
+// stat lines (Sleeper) + Vegas totals + defense-vs-position + weather.
+
+function projStatOf(p, key) {
+  const line = state.projStats.get(p.id);
+  return line ? Number(line[key]) || 0 : 0;
+}
+
+function topPlayersFor(team, poss, n = 2) {
+  return state.players
+    .filter((p) => p.team === team && poss.includes(p.pos) && !/^(Out|IR|Sus)/i.test(p.injury || ""))
+    .map((p) => ({ p, proj: state.projections.get(p.id) || 0 }))
+    .filter((x) => x.proj > 0)
+    .sort((a, b) => b.proj - a.proj)
+    .slice(0, n);
+}
+
+// One prop idea per strong player situation, ranked by conviction score.
+function buildPropIdeas() {
+  const ideas = [];
+  for (const g of state.games) {
+    for (const [team, implied] of [[g.home, g.hTotal], [g.away, g.aTotal]]) {
+      const impliedOk = implied === null || implied >= 21;
+      for (const { p } of [...topPlayersFor(team, ["QB"], 1), ...topPlayersFor(team, ["RB", "WR", "TE"], 3)]) {
+        const m = matchupFor(p.team, p.pos);
+        if (!m || m.bye) continue;
+        const great = m.cls === "great" || m.cls === "good";
+        if (!great && !(implied >= 25)) continue;
+        let text = null, stat = 0;
+        if (p.pos === "QB" && !m.windy) {
+          stat = projStatOf(p, "pass_yd");
+          if (stat >= 230) {
+            text = `Passing yards OVER — projected ~${Math.round(stat)} yds`;
+            const tds = projStatOf(p, "pass_td");
+            if (tds >= 1.8) text += ` · 2+ pass TDs (proj ${tds.toFixed(1)})`;
+          }
+        } else if (p.pos === "RB") {
+          stat = projStatOf(p, "rush_yd");
+          if (stat >= 55) {
+            text = `Rushing yards OVER — projected ~${Math.round(stat)} yds`;
+            const tds = projStatOf(p, "rush_td") + projStatOf(p, "rec_td");
+            if (tds >= 0.55) text += ` · Anytime TD (proj ${tds.toFixed(2)})`;
+          }
+        } else {
+          stat = projStatOf(p, "rec_yd");
+          if (stat >= 50) {
+            text = `Receiving yards OVER — projected ~${Math.round(stat)} yds`;
+            const tds = projStatOf(p, "rec_td");
+            if (tds >= 0.45) text += ` · Anytime TD (proj ${tds.toFixed(2)})`;
+          }
+        }
+        if (!text || !impliedOk) continue;
+        const why = [];
+        if (m.label) why.push(m.label);
+        if (implied !== null) why.push(`implied total ${implied}`);
+        if (m.windy) why.push("⚠ windy — temper yardage overs");
+        ideas.push({
+          p, text, why,
+          score: stat * (great ? 1.15 : 1) * (implied ? implied / 23 : 1),
+          mine: state.myTeam.includes(p.id),
+        });
+      }
+    }
+  }
+  return ideas.sort((a, b) => b.score - a.score).slice(0, 12);
+}
+
+function gameAngles(g) {
+  const angles = [];
+  const wx = state.weather.get(g.home);
+  if (wx && wx.wind >= 18) angles.push(`💨 ${wx.wind} mph wind — Under lean; fade kickers and deep passing`);
+  if (wx && wx.precip >= 60) angles.push(`🌧 ${wx.precip}% rain risk — Under lean; run-game and turnover angles`);
+  if (g.ou !== null && g.ou >= 48) angles.push("🔥 Shootout watch — overs and same-game stacks live here");
+  if (g.ou !== null && g.ou <= 40) angles.push("🛡 Low total — Under / D-ST points angle");
+  if (g.spread !== null && Math.abs(g.spread) >= 9.5) {
+    const fav = g.spread < 0 ? g.home : g.away;
+    const dog = g.spread < 0 ? g.away : g.home;
+    angles.push(`📉 Big spread — ${fav} RBs get closing volume; ${dog} garbage-time passing overs`);
+  }
+  const dvpNote = (team, opp) => {
+    const d = state.dvp?.get(opp);
+    if (!d) return;
+    if (d.QB <= 5) angles.push(`🎯 ${opp} bleeds to QBs (worst-5) — ${team} passing props over`);
+    if (d.RB <= 5) angles.push(`🎯 ${opp} bleeds to RBs (worst-5) — ${team} rushing props over`);
+    if (d.WR <= 5) angles.push(`🎯 ${opp} bleeds to WRs (worst-5) — ${team} receiving props over`);
+  };
+  dvpNote(g.home, g.away);
+  dvpNote(g.away, g.home);
+  return angles;
+}
+
+function buildParlays(props) {
+  const parlays = [];
+  // Same-game stack from the highest-total game.
+  const withOu = state.games.filter((g) => g.ou !== null).sort((a, b) => b.ou - a.ou);
+  if (withOu.length) {
+    const g = withOu[0];
+    const team = (g.hTotal ?? 0) >= (g.aTotal ?? 0) ? g.home : g.away;
+    const qb = topPlayersFor(team, ["QB"], 1)[0];
+    const pc = topPlayersFor(team, ["WR", "TE"], 1)[0];
+    if (qb && pc) {
+      parlays.push({
+        title: `Same-game stack: ${g.away} @ ${g.home} (O/U ${g.ou})`,
+        legs: [
+          `${qb.p.name} passing yards OVER (proj ~${Math.round(projStatOf(qb.p, "pass_yd"))})`,
+          `${pc.p.name} receiving yards OVER (proj ~${Math.round(projStatOf(pc.p, "rec_yd"))})`,
+          `Game total OVER ${g.ou}`,
+        ],
+        why: "Correlated legs: if the game shoots out, all three tend to hit together.",
+      });
+    }
+  }
+  // Weather-under build.
+  const windy = state.games.find((g) => (state.weather.get(g.home)?.wind ?? 0) >= 18);
+  if (windy) {
+    const rb = topPlayersFor(windy.home, ["RB"], 1)[0] || topPlayersFor(windy.away, ["RB"], 1)[0];
+    parlays.push({
+      title: `Weather under: ${windy.away} @ ${windy.home} (${state.weather.get(windy.home).wind} mph wind)`,
+      legs: [
+        windy.ou !== null ? `Game total UNDER ${windy.ou}` : "Game total UNDER",
+        rb ? `${rb.p.name} rushing attempts/yards OVER (wind = run scripts)` : "Lean run-game props",
+        "Fade: kickers 50+ and deep-ball passing props",
+      ],
+      why: "High wind suppresses passing and kicking; teams leaning on the run shortens games.",
+    });
+  }
+  // "My guys" ticket from the user's own roster.
+  const mine = props.filter((i) => i.mine).slice(0, 2);
+  if (mine.length === 2) {
+    parlays.push({
+      title: "Root for your own team",
+      legs: mine.map((i) => `${i.p.name}: ${i.text.split(" · ")[0]}`),
+      why: "Two of your starters with the strongest data angles — win your matchup and the ticket together.",
+    });
+  }
+  return parlays;
+}
+
+function renderBetting() {
+  const gamesEl = document.getElementById("betting-games");
+  const propsEl = document.getElementById("betting-props");
+  const parlaysEl = document.getElementById("betting-parlays");
+  if (!state.games.length) {
+    gamesEl.innerHTML = '<div class="loading">No games on the board (offseason or schedule unavailable).</div>';
+    propsEl.innerHTML = '<div class="loading">Prop ideas appear when weekly projections and lines are live.</div>';
+    parlaysEl.innerHTML = "";
+    return;
+  }
+
+  gamesEl.innerHTML = state.games.map((g) => {
+    const wx = state.weather.get(g.home);
+    const angles = gameAngles(g);
+    return `<div class="bet-card">
+      <div class="bet-head">
+        <b>${escapeHtml(g.away)} @ ${escapeHtml(g.home)}</b>
+        <span class="bet-lines">${g.details ? escapeHtml(g.details) + " · " : ""}${g.ou !== null ? `O/U ${g.ou}` : "no line yet"}</span>
+      </div>
+      <div class="bet-sub">
+        ${g.hTotal !== null ? `implied: ${escapeHtml(g.home)} ${g.hTotal} · ${escapeHtml(g.away)} ${g.aTotal}` : ""}
+        ${wx ? ` · ${wx.wind}mph · ${wx.temp}°F${wx.precip >= 50 ? ` · 🌧${wx.precip}%` : ""}` : ""}
+      </div>
+      ${angles.length ? `<ul class="bet-angles">${angles.map((a) => `<li>${escapeHtml(a)}</li>`).join("")}</ul>` : ""}
+    </div>`;
+  }).join("");
+
+  const props = buildPropIdeas();
+  propsEl.innerHTML = props.length
+    ? props.map((i) => `<div class="bet-card">
+        <div class="bet-head">
+          <b>${escapeHtml(i.p.name)}</b>
+          <span class="player-sub"><span class="pos-tag pos-${i.p.pos}">${i.p.pos}</span> <span>${escapeHtml(i.p.team)}</span>
+          ${i.mine ? '<span class="trend-badge trend-add">on my team</span>' : ""}</span>
+        </div>
+        <div class="bet-idea">${escapeHtml(i.text)}</div>
+        <div class="bet-sub">${i.why.map(escapeHtml).join(" · ")}</div>
+      </div>`).join("")
+    : '<div class="loading">Prop ideas need weekly projections — they go live during the season.</div>';
+
+  const parlays = buildParlays(props);
+  parlaysEl.innerHTML = parlays.length
+    ? parlays.map((pl) => `<div class="bet-card">
+        <div class="bet-head"><b>${escapeHtml(pl.title)}</b></div>
+        <ul class="bet-angles">${pl.legs.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>
+        <div class="bet-sub">${escapeHtml(pl.why)}</div>
+      </div>`).join("")
+    : '<div class="loading">Parlay ideas need posted lines and projections.</div>';
+}
+
+// ----- ESPN league import (paste-JSON sync) -----
+function parseEspnLeague(text) {
+  const j = JSON.parse(text.trim());
+  const teams = (j.teams || []).map((t) => ({
+    name: t.name || `${t.location || ""} ${t.nickname || ""}`.trim() || `Team ${t.id}`,
+    players: (t.roster?.entries || [])
+      .map((e) => e.playerPoolEntry?.player?.fullName || e.playerPoolEntry?.player?.name)
+      .filter(Boolean),
+  })).filter((t) => t.players.length);
+  if (!teams.length) throw new Error("No rosters found — make sure you copied the whole page.");
+  return teams;
+}
+
+function importEspnTeam(team) {
+  const byName = new Map(state.players.map((p) => [normName(p.name), p.id]));
+  const matched = [], unmatched = [];
+  for (const name of team.players) {
+    const id = byName.get(normName(name));
+    if (id) matched.push(id); else unmatched.push(name);
+  }
+  state.myTeam = matched;
+  saveMyTeam();
+  renderStartSit();
+  return { matched: matched.length, total: team.players.length, unmatched };
+}
+
 // ----- League (strategy notes + editable scoring) -----
 function renderStrategyNotes() {
   document.getElementById("strategy-notes").innerHTML = strategyNotes().map((n) =>
@@ -1570,6 +1795,40 @@ function initEvents() {
   });
 
   document.getElementById("notify-btn").addEventListener("click", toggleNotifications);
+
+  // ESPN league paste-import
+  const syncBody = document.getElementById("espn-sync-body");
+  const leagueIdInput = document.getElementById("espn-league-id");
+  const refreshEspnLink = () => {
+    const year = state.seasonYear || new Date().getFullYear();
+    const id = (leagueIdInput.value || "").replace(/\D/g, "") || "1767084290";
+    document.getElementById("espn-json-link").href =
+      `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${year}/segments/0/leagues/${id}?view=mRoster&view=mTeam`;
+  };
+  document.getElementById("espn-sync-toggle").addEventListener("click", () => {
+    syncBody.hidden = !syncBody.hidden;
+    refreshEspnLink();
+  });
+  leagueIdInput.addEventListener("input", refreshEspnLink);
+  document.getElementById("espn-import").addEventListener("click", () => {
+    const resultEl = document.getElementById("espn-result");
+    try {
+      const teams = parseEspnLeague(document.getElementById("espn-paste").value);
+      resultEl.innerHTML = `<p class="subtitle">Found ${teams.length} teams — tap yours:</p>
+        <div class="espn-teams">${teams.map((t, i) =>
+          `<button class="btn" data-espn-team="${i}">${escapeHtml(t.name)} (${t.players.length})</button>`).join("")}</div>`;
+      resultEl.onclick = (e) => {
+        const btn = e.target.closest("[data-espn-team]");
+        if (!btn) return;
+        const r = importEspnTeam(teams[Number(btn.dataset.espnTeam)]);
+        resultEl.innerHTML = `<p class="subtitle">✅ Imported ${r.matched} of ${r.total} players into My Roster.` +
+          (r.unmatched.length ? `<br>Couldn't match: ${r.unmatched.map(escapeHtml).join(", ")} — add them with the search box (D/ST units: search the team name).` : "") +
+          `</p>`;
+      };
+    } catch (err) {
+      resultEl.innerHTML = `<div class="error-box">Couldn't read that. Make sure you copied the ENTIRE page from the link in step 2 (it should start with {"). ${escapeHtml(err.message)}</div>`;
+    }
+  });
 
   // Draft slot picker (snake-draft math for the Pick Advisor)
   const slotSel = document.getElementById("draft-slot");

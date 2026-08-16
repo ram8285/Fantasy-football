@@ -15,7 +15,22 @@ without needing Twitter or social media apps.
 | 📊 **Rankings** | Live rankings **re-ranked for this league's 2-QB, 6-pt-pass-TD reality**: QBs are pulled up to superflex-calibrated slots (QB1 ≈ #1 overall, ~20 QBs with starter value), while a "▲ market #N" badge shows where standard 1-QB apps rank each player — that gap is your draft-day value edge. Position filters, positional ranks, injury tags, and trending badges included. |
 | 🎯 **Draft** | A live draft-day war room. Tap **MINE** / **GONE** as picks happen and the **🧭 Pick Advisor** recommends your next pick in real time: board value × your roster needs × "will they make it back to your next turn" (real 2-QB ADP + snake-draft math from your slot) × tier scarcity — each recommendation with plain-English reasons, plus "safe to wait" notes. Roster tracking by lineup slot, best-available, tier warnings (QB tier = 20 for this 2-QB format), ADP on every row. Picks saved on your device. |
 | 🔄 **Waivers** | Who the fantasy world is adding and dropping *right now* — trending player counts over the last 24 hours across all Sleeper leagues. This surfaces breaking news (injuries, depth chart changes, breakouts) even if you never see a tweet. |
+| 🎲 **Betting** | Prop & parlay **starting points** generated from live data (ideas, not advice): a full game board with spreads, over/unders, implied team totals and weather; auto-generated angles (shootout watch, wind unders, blowout scripts, defense-vs-position prop leans); player prop ideas backed by projected stat lines ("Passing yards OVER — projected ~289"); and parlay starters including correlated same-game stacks and a ticket built from your own roster's strongest angles. |
 | ⚙️ **My League** | Your ESPN league's full scoring settings — **every value is editable** in case the league changes rules before the season. Edit a value and the entire app re-analyzes instantly: projections re-score, the lineup optimizer re-runs, the QB draft-board boost recalibrates (drop passing TDs to 4 and it softens automatically), and the strategy notes rewrite themselves. Edits persist on your device; one tap resets to league defaults. |
+
+## Syncing your ESPN league roster
+
+ESPN's fantasy API can't be called directly from a browser app (no CORS), and the league
+is private — but there's a 20-second manual sync built into the Start/Sit tab:
+
+1. Open **Manage My Roster → 📥 Sync from ESPN** (your league ID is pre-filled)
+2. Tap the link — logged into ESPN in the same browser, it shows your league's raw data
+3. Select all → copy → paste into the box → **Import** → tap your team name
+
+Your full roster imports automatically (players matched by name; it tells you about any
+it couldn't match, like D/ST units, which you can add via search). Re-run it any time
+your roster changes. True live sync would need a small server holding your ESPN login
+cookies — deliberately out of scope for a free, serverless app.
 
 ## Notifications
 

@@ -30,6 +30,7 @@
     <button class="tab" data-tab="rankings">📊 Rankings</button>
     <button class="tab" data-tab="draft">🎯 Draft</button>
     <button class="tab" data-tab="waivers">🔄 Waivers</button>
+    <button class="tab" data-tab="betting">🎲 Betting</button>
     <button class="tab" data-tab="league">⚙️ My League</button>
   </nav>
 </header>
@@ -60,7 +61,19 @@
     <div class="myteam-tools">
       <input type="search" id="myteam-search" placeholder="Type a player name to add…" autocomplete="off">
       <button id="myteam-import" class="btn">Import draft picks</button>
+      <button id="espn-sync-toggle" class="btn">📥 Sync from ESPN</button>
       <button id="myteam-clear" class="btn btn-danger">Clear</button>
+    </div>
+    <div id="espn-sync-body" class="espn-sync" hidden>
+      <p class="subtitle">Your league is private, so ESPN blocks apps from reading it directly — but <strong>you</strong> can read it while logged in, and paste it here. Takes ~20 seconds:</p>
+      <ol class="espn-steps">
+        <li>League ID: <input id="espn-league-id" inputmode="numeric" value="1767084290"> (yours is pre-filled)</li>
+        <li><a id="espn-json-link" href="#" target="_blank" rel="noopener">Tap here to open your league's data</a> — make sure you're logged into ESPN in this browser. You'll see a wall of text.</li>
+        <li>Select all of it (long-press → Select All), copy, and paste below:</li>
+      </ol>
+      <textarea id="espn-paste" rows="4" placeholder="Paste the ESPN data here…"></textarea>
+      <button id="espn-import" class="btn">Import</button>
+      <div id="espn-result"></div>
     </div>
     <div id="myteam-suggestions" class="player-list"></div>
     <div id="myteam-list" class="player-list"></div>
@@ -173,6 +186,20 @@
       <div id="waiver-drops" class="card-list"><div class="loading">Loading…</div></div>
     </div>
   </div>
+</section>
+
+<!-- ==================== BETTING ==================== -->
+<section id="tab-betting" class="tab-panel">
+  <div class="panel-head">
+    <h2>Betting Angles</h2>
+    <p class="subtitle">Prop &amp; parlay <strong>starting points</strong> generated from live data: Vegas lines, projected stat lines, defense-vs-position, and game-day weather. Ideas, not advice — lines move, always check your book, bet responsibly.</p>
+  </div>
+  <h3 class="waiver-head">🎯 Player prop ideas</h3>
+  <div id="betting-props" class="card-list"><div class="loading">Loading…</div></div>
+  <h3 class="waiver-head" style="margin-top:18px">🧩 Parlay starters</h3>
+  <div id="betting-parlays" class="card-list"><div class="loading">Loading…</div></div>
+  <h3 class="waiver-head" style="margin-top:18px">🏟 This week's board</h3>
+  <div id="betting-games" class="card-list"><div class="loading">Loading…</div></div>
 </section>
 
 <!-- ==================== LEAGUE ==================== -->

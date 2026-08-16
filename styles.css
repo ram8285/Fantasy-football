@@ -427,6 +427,50 @@ span.chip-taken { border-color: var(--danger); color: var(--danger); }
 .mu-brutal { background: rgba(248, 81, 73, 0.18); color: var(--danger); }
 .mu-bye { background: rgba(110, 118, 129, 0.25); color: var(--text-dim); }
 
+/* ---------- Betting ---------- */
+.bet-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.bet-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.bet-head b { font-size: 0.95rem; }
+.bet-lines { font-size: 0.78rem; color: var(--accent-blue); font-weight: 700; }
+.bet-sub { font-size: 0.75rem; color: var(--text-dim); margin-top: 4px; }
+.bet-idea { font-size: 0.85rem; font-weight: 600; margin-top: 6px; color: var(--accent); }
+.bet-angles { margin: 8px 0 0 18px; font-size: 0.8rem; line-height: 1.6; }
+
+/* ---------- ESPN sync ---------- */
+.espn-sync {
+  margin: 0 14px 12px;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+.espn-steps { margin: 8px 0 8px 18px; font-size: 0.82rem; line-height: 1.7; }
+.espn-steps input {
+  width: 120px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 3px 8px;
+  font-weight: 700;
+}
+.espn-sync textarea {
+  width: 100%;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.8rem;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+.espn-teams { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
 /* ---------- League ---------- */
 .strategy-card {
   background: var(--bg-raised);
