@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<title>Gridiron HQ — Fantasy Football Command Center</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏈</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <h1>🏈 Gridiron HQ</h1>
+    <div class="topbar-right">
+      <span id="updated-at" class="updated-at"></span>
+      <button id="refresh-btn" class="btn btn-ghost" title="Refresh all data">⟳ Refresh</button>
+    </div>
+  </div>
+  <nav class="tabs">
+    <button class="tab active" data-tab="news">📰 News</button>
+    <button class="tab" data-tab="rankings">📊 Rankings</button>
+    <button class="tab" data-tab="draft">🎯 Draft</button>
+    <button class="tab" data-tab="waivers">🔄 Waivers</button>
+    <button class="tab" data-tab="league">⚙️ My League</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ==================== NEWS ==================== -->
+<section id="tab-news" class="tab-panel active">
+  <div class="panel-head">
+    <h2>Live NFL News</h2>
+    <p class="subtitle">Straight from ESPN's wire — no Twitter needed. Pull to see what to act on.</p>
+  </div>
+  <div id="news-list" class="card-list">
+    <div class="loading">Loading news…</div>
+  </div>
+</section>
+
+<!-- ==================== RANKINGS ==================== -->
+<section id="tab-rankings" class="tab-panel">
+  <div class="panel-head">
+    <h2>Player Rankings</h2>
+    <p class="subtitle">Live consensus ranks (Sleeper). Your league is <strong>half-PPR (0.5/rec)</strong> — volume pass-catchers get a small note when relevant.</p>
+  </div>
+  <div class="filter-bar">
+    <input type="search" id="rank-search" placeholder="Search player…" autocomplete="off">
+    <div class="pos-filters" id="rank-pos-filters">
+      <button class="pos-btn active" data-pos="ALL">All</button>
+      <button class="pos-btn" data-pos="QB">QB</button>
+      <button class="pos-btn" data-pos="RB">RB</button>
+      <button class="pos-btn" data-pos="WR">WR</button>
+      <button class="pos-btn" data-pos="TE">TE</button>
+      <button class="pos-btn" data-pos="K">K</button>
+      <button class="pos-btn" data-pos="DEF">D/ST</button>
+    </div>
+  </div>
+  <div id="rankings-list" class="player-list">
+    <div class="loading">Loading players…</div>
+  </div>
+</section>
+
+<!-- ==================== DRAFT ==================== -->
+<section id="tab-draft" class="tab-panel">
+  <div class="panel-head">
+    <h2>Draft Assistant</h2>
+    <p class="subtitle">Tap <span class="chip chip-mine">MINE</span> when you pick a player, <span class="chip chip-taken">GONE</span> when someone else does. Best available updates live.</p>
+  </div>
+
+  <div class="draft-summary">
+    <div class="draft-stat"><span id="draft-pick-count">0</span><label>picks made</label></div>
+    <div class="draft-stat"><span id="draft-my-count">0</span><label>my players</label></div>
+    <button id="draft-reset" class="btn btn-danger">Reset draft</button>
+  </div>
+
+  <details class="roster-panel" open>
+    <summary>My Roster</summary>
+    <div id="my-roster" class="roster-grid"></div>
+  </details>
+
+  <details class="roster-panel">
+    <summary>Positional Needs &amp; Scarcity</summary>
+    <div id="scarcity" class="scarcity-grid"></div>
+  </details>
+
+  <div class="filter-bar">
+    <input type="search" id="draft-search" placeholder="Search player…" autocomplete="off">
+    <div class="pos-filters" id="draft-pos-filters">
+      <button class="pos-btn active" data-pos="ALL">All</button>
+      <button class="pos-btn" data-pos="QB">QB</button>
+      <button class="pos-btn" data-pos="RB">RB</button>
+      <button class="pos-btn" data-pos="WR">WR</button>
+      <button class="pos-btn" data-pos="TE">TE</button>
+      <button class="pos-btn" data-pos="K">K</button>
+      <button class="pos-btn" data-pos="DEF">D/ST</button>
+    </div>
+    <label class="toggle"><input type="checkbox" id="hide-drafted" checked> Hide drafted</label>
+  </div>
+  <div id="draft-list" class="player-list">
+    <div class="loading">Loading players…</div>
+  </div>
+</section>
+
+<!-- ==================== WAIVERS ==================== -->
+<section id="tab-waivers" class="tab-panel">
+  <div class="panel-head">
+    <h2>Waiver Wire Radar</h2>
+    <p class="subtitle">Who the fantasy world is adding &amp; dropping <strong>right now</strong> (last 24h across all Sleeper leagues). This is the news you've been missing.</p>
+  </div>
+  <div class="waiver-cols">
+    <div class="waiver-col">
+      <h3 class="waiver-head add">🔥 Hot Adds</h3>
+      <div id="waiver-adds" class="card-list"><div class="loading">Loading…</div></div>
+    </div>
+    <div class="waiver-col">
+      <h3 class="waiver-head drop">🧊 Mass Drops</h3>
+      <div id="waiver-drops" class="card-list"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== LEAGUE ==================== -->
+<section id="tab-league" class="tab-panel">
+  <div class="panel-head">
+    <h2>My League Scoring</h2>
+    <p class="subtitle">Your ESPN league settings, plus what they mean for strategy.</p>
+  </div>
+  <div id="league-content"></div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <p>Data: <a href="https://sleeper.com" target="_blank" rel="noopener">Sleeper API</a> (players, trends) · <a href="https://www.espn.com/nfl/" target="_blank" rel="noopener">ESPN</a> (news). Free public endpoints, no login required. Draft picks are saved on this device.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
