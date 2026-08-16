@@ -1,0 +1,53 @@
+{
+ "items": [
+  {
+   "source": "Sample",
+   "title": "Sample data: camp battle at RB heating up",
+   "summary": "This is bundled sample news shown when the app has no internet access. Live mode pulls real headlines from ESPN, Yahoo, CBS Sports, and RotoWire every 5 minutes.",
+   "link": "",
+   "publishedAt": "2026-08-16T23:05:51.605Z",
+   "ts": 1786921551605
+  },
+  {
+   "source": "Sample",
+   "title": "Rookie WR turning heads in joint practices",
+   "summary": "Beat writers report the rookie has been the best player on the field two days in a row.",
+   "link": "",
+   "publishedAt": "2026-08-16T21:35:51.605Z",
+   "ts": 1786916151605
+  },
+  {
+   "source": "Sample",
+   "title": "Starting QB expected to play in preseason week 2",
+   "summary": "The starters are expected to see a couple of series this weekend.",
+   "link": "",
+   "publishedAt": "2026-08-16T18:35:51.605Z",
+   "ts": 1786905351605
+  },
+  {
+   "source": "Sample",
+   "title": "Veteran RB placed on PUP list",
+   "summary": "The team says the move is precautionary; fantasy managers should monitor his practice status.",
+   "link": "",
+   "publishedAt": "2026-08-16T14:35:51.605Z",
+   "ts": 1786890951605
+  },
+  {
+   "source": "Sample",
+   "title": "TE emerging as a red-zone favorite",
+   "summary": "He has led the team in end-zone targets throughout camp.",
+   "link": "",
+   "publishedAt": "2026-08-16T09:35:51.605Z",
+   "ts": 1786872951605
+  },
+  {
+   "source": "Sample",
+   "title": "Defense signs former All-Pro edge rusher",
+   "summary": "The move could vault this unit into top-5 D/ST conversations.",
+   "link": "",
+   "publishedAt": "2026-08-16T01:35:51.605Z",
+   "ts": 1786844151605
+  }
+ ],
+ "failedSources": []
+}

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fantasy Football HQ</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏈</text></svg>">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🏈 <span>Fantasy Football HQ</span></div>
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-tab="news">News</button>
+      <button class="tab" data-tab="rankings">Rankings</button>
+      <button class="tab" data-tab="draft">Draft</button>
+      <button class="tab" data-tab="waivers">Waivers</button>
+    </nav>
+    <div class="data-status" id="dataStatus" title="Data source status"></div>
+  </header>
+
+  <div id="banner" class="banner hidden"></div>
+
+  <!-- ============================= NEWS ============================= -->
+  <main id="tab-news" class="panel">
+    <div class="toolbar">
+      <input id="newsSearch" class="search" type="search"
+             placeholder="Filter headlines — try a player or team name…">
+      <div class="chips" id="newsSources"></div>
+      <button id="newsRefresh" class="btn">↻ Refresh</button>
+    </div>
+    <div id="newsList" class="news-list">
+      <div class="empty">Loading news…</div>
+    </div>
+  </main>
+
+  <!-- =========================== RANKINGS =========================== -->
+  <main id="tab-rankings" class="panel hidden">
+    <div class="toolbar">
+      <input id="rankSearch" class="search" type="search" placeholder="Search players…">
+      <div class="chips" id="rankPos"></div>
+    </div>
+    <div class="table-wrap">
+      <table class="table" id="rankTable">
+        <thead>
+          <tr><th>#</th><th>Player</th><th>Pos</th><th>Team</th><th>Age</th><th>Exp</th><th>Status</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- ============================= DRAFT ============================ -->
+  <main id="tab-draft" class="panel hidden">
+    <div class="draft-grid">
+      <section class="draft-board">
+        <div class="toolbar">
+          <input id="draftSearch" class="search" type="search" placeholder="Search available players…">
+          <div class="chips" id="draftPos"></div>
+          <button id="draftUndo" class="btn">↩ Undo</button>
+          <button id="draftReset" class="btn danger">Reset draft</button>
+        </div>
+        <p class="hint">Best available by rank. Mark players as they come off the board:
+          <b>Mine</b> adds to your roster, <b>Taken</b> removes them from the pool.</p>
+        <div class="table-wrap">
+          <table class="table" id="draftTable">
+            <thead>
+              <tr><th>#</th><th>Player</th><th>Pos</th><th>Team</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+      <aside class="roster">
+        <h3>My roster</h3>
+        <div id="needs" class="needs"></div>
+        <ul id="rosterList" class="roster-list"></ul>
+      </aside>
+    </div>
+  </main>
+
+  <!-- ============================ WAIVERS =========================== -->
+  <main id="tab-waivers" class="panel hidden">
+    <p class="hint">Most added and dropped players across Sleeper leagues in the last 24 hours —
+      a live read on who the fantasy community is grabbing before you hear about it anywhere else.</p>
+    <div class="toolbar">
+      <div class="chips" id="waiverPos"></div>
+      <button id="waiverRefresh" class="btn">↻ Refresh</button>
+    </div>
+    <div class="waiver-grid">
+      <section>
+        <h3 class="up">▲ Most added (24h)</h3>
+        <div id="waiverAdds" class="waiver-list"><div class="empty">Loading…</div></div>
+      </section>
+      <section>
+        <h3 class="down">▼ Most dropped (24h)</h3>
+        <div id="waiverDrops" class="waiver-list"><div class="empty">Loading…</div></div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    Data: <a href="https://sleeper.com" target="_blank" rel="noopener">Sleeper</a> player database &amp; trends,
+    plus RSS news from ESPN, Yahoo, CBS, and RotoWire. No accounts, no API keys, no social media.
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

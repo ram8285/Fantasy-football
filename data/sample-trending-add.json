@@ -1,0 +1,74 @@
+[
+ {
+  "id": "sample-66",
+  "name": "Tyrone Tracy Jr.",
+  "team": "NYG",
+  "pos": "RB",
+  "injury": null,
+  "rank": 66,
+  "count": 48210
+ },
+ {
+  "id": "sample-83",
+  "name": "Jake Bates",
+  "team": "DET",
+  "pos": "K",
+  "injury": null,
+  "rank": 83,
+  "count": 24105
+ },
+ {
+  "id": "sample-74",
+  "name": "Rome Odunze",
+  "team": "CHI",
+  "pos": "WR",
+  "injury": null,
+  "rank": 74,
+  "count": 16070
+ },
+ {
+  "id": "sample-76",
+  "name": "Tucker Kraft",
+  "team": "GB",
+  "pos": "TE",
+  "injury": null,
+  "rank": 76,
+  "count": 12053
+ },
+ {
+  "id": "sample-80",
+  "name": "Jaylen Warren",
+  "team": "PIT",
+  "pos": "RB",
+  "injury": null,
+  "rank": 80,
+  "count": 9642
+ },
+ {
+  "id": "sample-87",
+  "name": "Broncos D/ST",
+  "team": "DEN",
+  "pos": "DEF",
+  "injury": null,
+  "rank": 87,
+  "count": 8035
+ },
+ {
+  "id": "sample-77",
+  "name": "Justin Fields",
+  "team": "NYJ",
+  "pos": "QB",
+  "injury": null,
+  "rank": 77,
+  "count": 6887
+ },
+ {
+  "id": "sample-79",
+  "name": "Zach Charbonnet",
+  "team": "SEA",
+  "pos": "RB",
+  "injury": null,
+  "rank": 79,
+  "count": 6026
+ }
+]

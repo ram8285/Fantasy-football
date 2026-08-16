@@ -1,0 +1,56 @@
+[
+ {
+  "id": "sample-73",
+  "name": "Brandon Aiyuk",
+  "team": "SF",
+  "pos": "WR",
+  "injury": "PUP",
+  "rank": 73,
+  "count": 31540
+ },
+ {
+  "id": "sample-82",
+  "name": "Justin Tucker",
+  "team": "BAL",
+  "pos": "K",
+  "injury": null,
+  "rank": 82,
+  "count": 15770
+ },
+ {
+  "id": "sample-71",
+  "name": "Evan Engram",
+  "team": "DEN",
+  "pos": "TE",
+  "injury": null,
+  "rank": 71,
+  "count": 10513
+ },
+ {
+  "id": "sample-72",
+  "name": "Isiah Pacheco",
+  "team": "KC",
+  "pos": "RB",
+  "injury": null,
+  "rank": 72,
+  "count": 7885
+ },
+ {
+  "id": "sample-67",
+  "name": "Jerry Jeudy",
+  "team": "CLE",
+  "pos": "WR",
+  "injury": null,
+  "rank": 67,
+  "count": 6308
+ },
+ {
+  "id": "sample-89",
+  "name": "Texans D/ST",
+  "team": "HOU",
+  "pos": "DEF",
+  "injury": null,
+  "rank": 89,
+  "count": 5257
+ }
+]
