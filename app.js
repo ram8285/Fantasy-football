@@ -307,8 +307,12 @@ const state = {
   espnCfg: loadJSON(ESPN_SYNC_KEY, { leagueId: "1767084290", teamId: null, teamName: null }),
   espn: null,             // {teams, rosteredIds, opponent, currentMatchupPeriod}
   espnError: null,
-  oddsKey: localStorage.getItem(ODDS_KEY_KEY) || "",
-  sgoKey: localStorage.getItem(SGO_KEY_KEY) || "",
+  // Owner's free-tier keys ship as defaults BY THE OWNER'S EXPLICIT CHOICE —
+  // zero setup on any device. Exposure risk accepted: keys are visible to
+  // anyone reading this public code; worst case is burned free-tier quota
+  // (no payment methods attached). Pasting a key in Settings overrides these.
+  oddsKey: localStorage.getItem(ODDS_KEY_KEY) || "7e84e6e6e43aac6aaebf2828e214378b",
+  sgoKey: localStorage.getItem(SGO_KEY_KEY) || "bc3d2ea15225e621ac7fb1c76092018e",
   sgoStatus: null,        // human-readable result of the last SGO pull
   oddsQuota: null,        // {remaining, used} from response headers
   oddsShop: new Map(),    // home abbr -> {eventId, spreads, totals, h2h best prices}
@@ -2333,7 +2337,7 @@ function renderOddsSettings() {
   if (!quotaEl) return;
   const usage = oddsUsage();
   if (!state.oddsKey) {
-    quotaEl.textContent = "No key saved yet — game lines above come from ESPN only.";
+    quotaEl.textContent = "No key — game lines above come from ESPN only.";
   } else {
     const ts = loadJSON(ODDS_CACHE_KEY, null)?.ts;
     const q = state.oddsQuota

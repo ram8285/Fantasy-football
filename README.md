@@ -61,8 +61,11 @@ Tap the 🔔 bell in the top bar to enable alerts. While the app is open it chec
 
 ### Optional: The Odds API (real betting lines)
 
-Paste a free key from [the-odds-api.com](https://the-odds-api.com) into **Betting → 🔑 The
-Odds API settings** (stored on your device only — never in this repo's code) to unlock:
+The app ships **pre-configured with the owner's free-tier key** (an explicit choice:
+anyone reading this public code can see it, and the worst case is burned free quota —
+no payment methods are attached; regenerate the key on the provider dashboard and update
+`app.js` to rotate it). Paste your own key in **Betting → 🔑 Odds providers** to override
+on your device. It unlocks:
 
 - **Line shopping** — best available spread/total/moneyline price across US sportsbooks,
   with the book named on every price
@@ -84,7 +87,8 @@ for the **entire weekly NFL slate automatically** — no per-game buttons. Its o
 10-minute delayed on the free tier, so the two providers complement each other: SGO
 saturates the Prop Edges section all week; The Odds API refreshes a specific game with
 sharp real-time multi-book prices when you're about to bet. When both provide the same
-prop, the app keeps the best price. Both keys live in on-device storage only.
+prop, the app keeps the best price. This provider is also pre-configured with the
+owner's free key (same tradeoff as above); an on-device override field is provided.
 
 ### Odds orchestration (built-in quota efficiency)
 
