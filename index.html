@@ -65,7 +65,11 @@
       <button id="myteam-clear" class="btn btn-danger">Clear</button>
     </div>
     <div id="espn-sync-body" class="espn-sync" hidden>
-      <p class="subtitle">Your league is private, so ESPN blocks apps from reading it directly — but <strong>you</strong> can read it while logged in, and paste it here. Takes ~20 seconds:</p>
+      <div class="espn-auto">
+        <button id="espn-autofetch" class="btn">⚡ Auto-fetch my league</button>
+        <span id="espn-status" class="subtitle"></span>
+      </div>
+      <p class="subtitle">Your league is public, so auto-fetch should just work (and then your roster, league-wide free agents, and weekly opponent stay synced on every refresh). If ESPN blocks the connection, use the copy/paste method:</p>
       <ol class="espn-steps">
         <li>League ID: <input id="espn-league-id" inputmode="numeric" value="1767084290"> (yours is pre-filled)</li>
         <li><a id="espn-json-link" href="#" target="_blank" rel="noopener">Tap here to open your league's data</a> — make sure you're logged into ESPN in this browser. You'll see a wall of text.</li>

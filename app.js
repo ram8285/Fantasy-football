@@ -195,6 +195,10 @@ const RANKSNAP_MIN_AGE_MS = 12 * 60 * 60 * 1000;
 const ADP_CACHE_KEY = "ghq_adp_v1";       // 2QB ADP, cached 24h
 const DVP_CACHE_KEY = "ghq_dvp_v1";       // defense-vs-position, cached 24h
 const DRAFT_SLOT_KEY = "ghq_draftslot_v1";
+const ESPN_SYNC_KEY = "ghq_espnsync_v1"; // {leagueId, teamId, teamName}
+
+const espnLeagueUrl = (id, year) =>
+  `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${year}/segments/0/leagues/${id}?view=mTeam&view=mRoster&view=mMatchup`;
 
 // Your league's actual lineup: OP is a utility slot that accepts ANY offensive
 // player, including a second QB (big deal with 6-pt passing TDs).
@@ -217,6 +221,9 @@ const state = {
   adp: new Map(),         // normalized name -> {adp, posAdp}
   weather: new Map(),     // home team -> {wind, precip, temp}
   games: [],              // [{home, away, date, ou, spread, details}]
+  espnCfg: loadJSON(ESPN_SYNC_KEY, { leagueId: "1767084290", teamId: null, teamName: null }),
+  espn: null,             // {teams, rosteredIds, opponent, currentMatchupPeriod}
+  espnError: null,
   dvp: null,              // def team -> {QB:rank, RB:rank, WR:rank, TE:rank} 1=easiest
   draftSlot: loadJSON(DRAFT_SLOT_KEY, 5),
   draft: loadDraft(),     // { [playerId]: "mine" | "taken" }
@@ -411,6 +418,7 @@ async function loadAll(force = false) {
 
   await Promise.allSettled(jobs);
   applyInjuryOverlay();
+  await loadEspnLeague(); // needs the player DB for name matching
 
   // These need the season/week from the scoreboard, so they run after.
   if (state.seasonYear && state.week) {
@@ -1084,6 +1092,7 @@ function renderWaivers() {
             <span class="pos-tag pos-${p.pos}">${p.pos === "DEF" ? "D/ST" : p.pos}</span>
             <span>${escapeHtml(p.team)}</span>
             ${p.pos === "QB" ? '<span class="trend-badge trend-add">2-QB league value</span>' : ""}
+            ${leagueAvailability(p.id)}
             ${p.injury ? `<span class="trend-badge trend-drop">${escapeHtml(p.injury)}</span>` : ""}
           </div>
         </div>
@@ -1194,6 +1203,7 @@ function renderStartSit() {
   }
   renderMyTeamManager();
   renderLineup();
+  renderEspnStatus();
 }
 
 function renderMyTeamManager() {
@@ -1264,7 +1274,19 @@ function renderLineup() {
     </div>`;
   };
 
-  let html = `<div class="lineup-card">
+  let html = "";
+  // Head-to-head banner when the ESPN league sync knows this week's opponent.
+  if (state.espn?.opponent) {
+    const opp = state.espn.opponent;
+    const oppRoster = opp.ids.map((id) => state.byId.get(id)).filter(Boolean);
+    const oppTotal = optimizeLineup(oppRoster).starters
+      .reduce((sum, s) => sum + (s.pick?.adjusted || 0), 0);
+    const diff = total - oppTotal;
+    html += `<div class="strategy-card"><h4>⚔️ This week vs ${escapeHtml(opp.name)}</h4>
+      <p>Your optimal lineup projects <b>${total.toFixed(1)}</b>, theirs projects <b>${oppTotal.toFixed(1)}</b> —
+      ${diff >= 0 ? `you're favored by ${diff.toFixed(1)}` : `you're behind by ${(-diff).toFixed(1)}; hit the Waivers tab for upgrades`}.</p></div>`;
+  }
+  html += `<div class="lineup-card">
     <div class="lineup-head">
       <h3>✅ Optimal Lineup</h3>
       <div class="lineup-total"><b>${total.toFixed(1)}</b><small>total proj</small></div>
@@ -1318,6 +1340,7 @@ function renderSleepers() {
             <span class="pos-tag pos-${x.p.pos}">${x.p.pos === "DEF" ? "D/ST" : x.p.pos}${posRank(x.p)}</span>
             <span>${escapeHtml(x.p.team)}</span>
             ${x.p.pos === "QB" ? '<span class="trend-badge trend-add">2-QB league value</span>' : ""}
+            ${leagueAvailability(x.p.id)}
             <span>market #${x.p.mrank || x.p.rank} — flying under the radar</span>
           </div>
         </div>
@@ -1619,30 +1642,91 @@ function renderBetting() {
     : '<div class="loading">Parlay ideas need posted lines and projections.</div>';
 }
 
-// ----- ESPN league import (paste-JSON sync) -----
-function parseEspnLeague(text) {
-  const j = JSON.parse(text.trim());
-  const teams = (j.teams || []).map((t) => ({
-    name: t.name || `${t.location || ""} ${t.nickname || ""}`.trim() || `Team ${t.id}`,
-    players: (t.roster?.entries || [])
+// ----- ESPN league sync (auto-fetch for public leagues, paste fallback) -----
+function espnTeamsFrom(j) {
+  const byName = new Map(state.players.map((p) => [normName(p.name), p.id]));
+  const teams = (j.teams || []).map((t) => {
+    const players = (t.roster?.entries || [])
       .map((e) => e.playerPoolEntry?.player?.fullName || e.playerPoolEntry?.player?.name)
-      .filter(Boolean),
-  })).filter((t) => t.players.length);
+      .filter(Boolean);
+    return {
+      id: t.id,
+      name: t.name || `${t.location || ""} ${t.nickname || ""}`.trim() || `Team ${t.id}`,
+      players,
+      ids: players.map((n) => byName.get(normName(n))).filter(Boolean),
+    };
+  }).filter((t) => t.players.length);
   if (!teams.length) throw new Error("No rosters found — make sure you copied the whole page.");
   return teams;
 }
 
+function parseEspnLeague(text) {
+  return espnTeamsFrom(JSON.parse(text.trim()));
+}
+
+// Direct fetch — works now that the league is public, IF ESPN's API allows
+// browser cross-origin calls. Fails gracefully to the paste flow otherwise.
+async function loadEspnLeague() {
+  const cfg = state.espnCfg;
+  if (!cfg.leagueId) return;
+  const year = state.seasonYear || new Date().getFullYear();
+  try {
+    const j = await fetchJSON(espnLeagueUrl(cfg.leagueId, year));
+    const teams = espnTeamsFrom(j);
+    const rosteredIds = new Set(teams.flatMap((t) => t.ids));
+    const current = j.status?.currentMatchupPeriod ?? state.week ?? null;
+    let opponent = null;
+    if (cfg.teamId != null) {
+      const mineTeam = teams.find((t) => t.id === cfg.teamId);
+      if (mineTeam) {
+        state.myTeam = mineTeam.ids; // auto-sync roster on every refresh
+        saveMyTeam();
+      }
+      const m = (j.schedule || []).find((s) => s.matchupPeriodId === current &&
+        (s.home?.teamId === cfg.teamId || s.away?.teamId === cfg.teamId));
+      if (m) {
+        const oppId = m.home?.teamId === cfg.teamId ? m.away?.teamId : m.home?.teamId;
+        opponent = teams.find((t) => t.id === oppId) || null;
+      }
+    }
+    state.espn = { teams, rosteredIds, opponent, currentMatchupPeriod: current };
+    state.espnError = null;
+  } catch (e) {
+    state.espn = null;
+    state.espnError = String(e?.message || e);
+  }
+}
+
 function importEspnTeam(team) {
   const byName = new Map(state.players.map((p) => [normName(p.name), p.id]));
-  const matched = [], unmatched = [];
-  for (const name of team.players) {
-    const id = byName.get(normName(name));
-    if (id) matched.push(id); else unmatched.push(name);
-  }
-  state.myTeam = matched;
+  const unmatched = team.players.filter((n) => !byName.has(normName(n)));
+  state.myTeam = [...team.ids];
   saveMyTeam();
   renderStartSit();
-  return { matched: matched.length, total: team.players.length, unmatched };
+  return { matched: team.ids.length, total: team.players.length, unmatched };
+}
+
+// "Is this trending player actually gettable in MY league?"
+function leagueAvailability(id) {
+  if (!state.espn?.rosteredIds) return "";
+  return state.espn.rosteredIds.has(id)
+    ? '<span class="mkt-note">rostered in your league</span>'
+    : '<span class="trend-badge trend-add">FREE AGENT in your league</span>';
+}
+
+function renderEspnStatus() {
+  const el = document.getElementById("espn-status");
+  if (!el) return;
+  const cfg = state.espnCfg;
+  if (cfg.teamId != null && state.espn) {
+    el.innerHTML = `⚡ Auto-sync ON — <b>${escapeHtml(cfg.teamName || "my team")}</b>, refreshes with the app. <button id="espn-sync-off" class="btn btn-danger">Turn off</button>`;
+  } else if (cfg.teamId != null) {
+    el.textContent = "⚡ Auto-sync armed — waiting for a successful fetch…";
+  } else if (state.espnError) {
+    el.textContent = "Auto-fetch failed (ESPN may block browser connections) — use the paste method below.";
+  } else {
+    el.textContent = "";
+  }
 }
 
 // ----- League (strategy notes + editable scoring) -----
@@ -1808,8 +1892,52 @@ function initEvents() {
   document.getElementById("espn-sync-toggle").addEventListener("click", () => {
     syncBody.hidden = !syncBody.hidden;
     refreshEspnLink();
+    renderEspnStatus();
   });
-  leagueIdInput.addEventListener("input", refreshEspnLink);
+  leagueIdInput.addEventListener("input", () => {
+    refreshEspnLink();
+    state.espnCfg.leagueId = (leagueIdInput.value || "").replace(/\D/g, "") || "1767084290";
+    saveJSON(ESPN_SYNC_KEY, state.espnCfg);
+  });
+
+  // Auto-fetch (public league): fetch directly, pick your team once, then the
+  // roster + free-agent flags + weekly opponent stay synced on every refresh.
+  document.getElementById("espn-autofetch").addEventListener("click", async () => {
+    const resultEl = document.getElementById("espn-result");
+    resultEl.innerHTML = '<div class="loading">Fetching your league…</div>';
+    await loadEspnLeague();
+    if (!state.espn) {
+      resultEl.innerHTML = `<div class="error-box">Couldn't reach ESPN from the browser
+        (${escapeHtml(state.espnError || "unknown error")}). This usually means ESPN blocks
+        cross-site connections — the copy/paste method below always works.</div>`;
+      renderEspnStatus();
+      return;
+    }
+    resultEl.innerHTML = `<p class="subtitle">✅ League fetched (${state.espn.teams.length} teams) — tap YOUR team to turn on auto-sync:</p>
+      <div class="espn-teams">${state.espn.teams.map((t) =>
+        `<button class="btn" data-espn-auto="${t.id}">${escapeHtml(t.name)} (${t.ids.length})</button>`).join("")}</div>`;
+    resultEl.onclick = async (e) => {
+      const btn = e.target.closest("[data-espn-auto]");
+      if (!btn) return;
+      const team = state.espn.teams.find((t) => t.id === Number(btn.dataset.espnAuto));
+      if (!team) return;
+      state.espnCfg.teamId = team.id;
+      state.espnCfg.teamName = team.name;
+      saveJSON(ESPN_SYNC_KEY, state.espnCfg);
+      await loadEspnLeague(); // re-apply with the chosen team (roster + opponent)
+      resultEl.innerHTML = `<p class="subtitle">✅ Auto-sync on: <b>${escapeHtml(team.name)}</b> — ${team.ids.length} players imported. Your roster now updates itself.</p>`;
+      renderAll();
+    };
+  });
+
+  // Turn auto-sync off (delegated — the button lives in a re-rendered status line)
+  document.getElementById("espn-sync-body").addEventListener("click", (e) => {
+    if (!e.target.closest("#espn-sync-off")) return;
+    state.espnCfg.teamId = null;
+    state.espnCfg.teamName = null;
+    saveJSON(ESPN_SYNC_KEY, state.espnCfg);
+    renderEspnStatus();
+  });
   document.getElementById("espn-import").addEventListener("click", () => {
     const resultEl = document.getElementById("espn-result");
     try {

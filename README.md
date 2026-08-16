@@ -18,19 +18,23 @@ without needing Twitter or social media apps.
 | 🎲 **Betting** | Prop & parlay **starting points** generated from live data (ideas, not advice): a full game board with spreads, over/unders, implied team totals and weather; auto-generated angles (shootout watch, wind unders, blowout scripts, defense-vs-position prop leans); player prop ideas backed by projected stat lines ("Passing yards OVER — projected ~289"); and parlay starters including correlated same-game stacks and a ticket built from your own roster's strongest angles. |
 | ⚙️ **My League** | Your ESPN league's full scoring settings — **every value is editable** in case the league changes rules before the season. Edit a value and the entire app re-analyzes instantly: projections re-score, the lineup optimizer re-runs, the QB draft-board boost recalibrates (drop passing TDs to 4 and it softens automatically), and the strategy notes rewrite themselves. Edits persist on your device; one tap resets to league defaults. |
 
-## Syncing your ESPN league roster
+## Syncing your ESPN league
 
-ESPN's fantasy API can't be called directly from a browser app (no CORS), and the league
-is private — but there's a 20-second manual sync built into the Start/Sit tab:
+The league is public, so the app can read it without a login. In **Start/Sit → Manage
+My Roster → 📥 Sync from ESPN**:
 
-1. Open **Manage My Roster → 📥 Sync from ESPN** (your league ID is pre-filled)
-2. Tap the link — logged into ESPN in the same browser, it shows your league's raw data
-3. Select all → copy → paste into the box → **Import** → tap your team name
+1. Tap **⚡ Auto-fetch my league** (league ID pre-filled), then tap your team once
+2. From then on, every refresh re-syncs automatically:
+   - **Your roster** stays current (add/drop on ESPN → reflected here)
+   - **Waivers & Sleepers** flag every trending player as **FREE AGENT in your league**
+     or *rostered in your league* — no more getting excited about someone your
+     leaguemate already owns
+   - **Start/Sit** shows a weekly head-to-head banner: your optimal lineup's projected
+     total vs your actual opponent's
 
-Your full roster imports automatically (players matched by name; it tells you about any
-it couldn't match, like D/ST units, which you can add via search). Re-run it any time
-your roster changes. True live sync would need a small server holding your ESPN login
-cookies — deliberately out of scope for a free, serverless app.
+If ESPN ever blocks direct browser connections (they don't document their CORS policy),
+the copy/paste fallback in the same panel always works: open the pre-built link, copy
+the page, paste, tap your team.
 
 ## Notifications
 

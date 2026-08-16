@@ -449,6 +449,7 @@ span.chip-taken { border-color: var(--danger); color: var(--danger); }
   border: 1px dashed var(--border);
   border-radius: 10px;
 }
+.espn-auto { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 .espn-steps { margin: 8px 0 8px 18px; font-size: 0.82rem; line-height: 1.7; }
 .espn-steps input {
   width: 120px;
