@@ -6,6 +6,10 @@
 <meta name="theme-color" content="#0d1117">
 <title>Gridiron HQ — Fantasy Football Command Center</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏈</text></svg>">
 </head>
 <body>
@@ -15,11 +19,14 @@
     <h1>🏈 Gridiron HQ</h1>
     <div class="topbar-right">
       <span id="updated-at" class="updated-at"></span>
-      <button id="refresh-btn" class="btn btn-ghost" title="Refresh all data">⟳ Refresh</button>
+      <button id="notify-btn" class="btn btn-ghost" title="Toggle notifications">🔔</button>
+      <button id="refresh-btn" class="btn btn-ghost" title="Refresh all data">⟳</button>
     </div>
   </div>
   <nav class="tabs">
     <button class="tab active" data-tab="news">📰 News</button>
+    <button class="tab" data-tab="startsit">🧠 Start/Sit</button>
+    <button class="tab" data-tab="sleepers">💎 Sleepers</button>
     <button class="tab" data-tab="rankings">📊 Rankings</button>
     <button class="tab" data-tab="draft">🎯 Draft</button>
     <button class="tab" data-tab="waivers">🔄 Waivers</button>
@@ -35,9 +42,45 @@
     <h2>Live NFL News</h2>
     <p class="subtitle">Straight from ESPN's wire — no Twitter needed. Pull to see what to act on.</p>
   </div>
+  <div id="news-notify-note" class="notify-note"></div>
   <div id="news-list" class="card-list">
     <div class="loading">Loading news…</div>
   </div>
+</section>
+
+<!-- ==================== START/SIT ==================== -->
+<section id="tab-startsit" class="tab-panel">
+  <div class="panel-head">
+    <h2>Start/Sit &amp; Lineup Optimizer</h2>
+    <p class="subtitle" id="startsit-week">Weekly projections scored with <strong>your exact league rules</strong> (6-pt pass TDs, half-PPR, OP slot) plus matchup strength.</p>
+  </div>
+
+  <details class="roster-panel" id="myteam-panel">
+    <summary>Manage My Roster (<span id="myteam-count">0</span> players)</summary>
+    <div class="myteam-tools">
+      <input type="search" id="myteam-search" placeholder="Type a player name to add…" autocomplete="off">
+      <button id="myteam-import" class="btn">Import draft picks</button>
+      <button id="myteam-clear" class="btn btn-danger">Clear</button>
+    </div>
+    <div id="myteam-suggestions" class="player-list"></div>
+    <div id="myteam-list" class="player-list"></div>
+  </details>
+
+  <div id="lineup-area">
+    <div class="loading">Add your roster above to get an optimized lineup.</div>
+  </div>
+</section>
+
+<!-- ==================== SLEEPERS ==================== -->
+<section id="tab-sleepers" class="tab-panel">
+  <div class="panel-head">
+    <h2>Sleeper Picks</h2>
+    <p class="subtitle">Under-the-radar players the data says are heating up — before your leaguemates notice.</p>
+  </div>
+  <h3 class="waiver-head add">🔥 Waiver heaters — ranked low, added heavily (24h)</h3>
+  <div id="sleepers-heaters" class="card-list"><div class="loading">Loading…</div></div>
+  <h3 class="waiver-head add" style="margin-top:18px">📈 Rank risers since your last visit</h3>
+  <div id="sleepers-risers" class="card-list"><div class="loading">Come back tomorrow — risers are computed between visits.</div></div>
 </section>
 
 <!-- ==================== RANKINGS ==================== -->

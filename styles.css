@@ -301,6 +301,73 @@ span.chip-taken { border-color: var(--danger); color: var(--danger); }
 .waiver-count b { font-size: 0.95rem; }
 .waiver-count small { display: block; color: var(--text-dim); font-size: 0.68rem; }
 
+/* ---------- Start/Sit & lineup ---------- */
+.notify-note {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+.myteam-tools {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 4px 14px 10px;
+}
+.myteam-tools input[type="search"] {
+  flex: 1 1 180px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 0.9rem;
+}
+#myteam-suggestions, #myteam-list { padding: 0 14px 12px; }
+#myteam-suggestions:empty, #myteam-list:empty { padding: 0; }
+
+.lineup-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lineup-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.lineup-head h3 { font-size: 1rem; }
+.lineup-total { text-align: right; }
+.lineup-total b { font-size: 1.2rem; color: var(--accent); }
+.lineup-total small, .proj-pts small { display: block; color: var(--text-dim); font-size: 0.65rem; }
+.lineup-row { background: var(--bg); }
+.lineup-row .slot-label {
+  font-weight: 800;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  min-width: 38px;
+}
+.proj-pts { text-align: right; min-width: 52px; }
+.proj-pts b { font-size: 1rem; }
+.empty-slot { color: var(--text-dim); font-size: 0.82rem; }
+
+.mu-opp { font-weight: 700; }
+.mu-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 20px;
+}
+.mu-great { background: rgba(63, 185, 80, 0.2); color: var(--accent); }
+.mu-good { background: rgba(63, 185, 80, 0.1); color: #7ee787; }
+.mu-tough { background: rgba(210, 153, 34, 0.15); color: var(--warn); }
+.mu-brutal { background: rgba(248, 81, 73, 0.18); color: var(--danger); }
+.mu-bye { background: rgba(110, 118, 129, 0.25); color: var(--text-dim); }
+
 /* ---------- League ---------- */
 .strategy-card {
   background: var(--bg-raised);
