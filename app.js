@@ -184,7 +184,33 @@ const TEAM_WORD_RE = new RegExp(`\\b(bills|buffalo)\\b`, "i");
 const ODDS_API_HOST = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl";
 const ODDS_KEY_KEY = "ghq_oddsapi_key";
 const ODDS_CACHE_KEY = "ghq_oddsapi_featured_v1";
-const ODDS_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+const ODDS_USAGE_KEY = "ghq_odds_usage_v1";
+
+// Adaptive refresh: lines move fast on NFL game days (Thu/Sun/Mon) and barely
+// at all midweek — so spend quota where it matters.
+function oddsTtl(now = new Date()) {
+  const gameDay = [0, 1, 4].includes(now.getDay()); // Sun, Mon, Thu
+  return (gameDay ? 6 : 12) * 60 * 60 * 1000;
+}
+const ODDS_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // fallback ceiling (SGO/props)
+
+// Monthly usage meter so quota problems are visible BEFORE they bite.
+function oddsUsage() {
+  const month = new Date().toISOString().slice(0, 7);
+  const u = loadJSON(ODDS_USAGE_KEY, null);
+  return u && u.month === month ? u : { month, toaUsed: null, sgoObjects: 0, toaProps: 0 };
+}
+function saveOddsUsage(patch) {
+  saveJSON(ODDS_USAGE_KEY, { ...oddsUsage(), ...patch });
+}
+function paceNote(used, limit) {
+  if (used === null || used === undefined) return "";
+  const day = new Date().getDate();
+  const projected = Math.round((used / Math.max(1, day)) * 30);
+  return projected > limit
+    ? ` ⚠ on pace for ~${projected}/${limit} this month — slow down`
+    : ` (on pace ~${projected}/${limit}/mo)`;
+}
 const PROP_MARKETS = "player_pass_yds,player_rush_yds,player_reception_yds,player_anytime_td";
 const BOOK_ABBR = {
   draftkings: "DK", fanduel: "FD", betmgm: "MGM", williamhill_us: "CZR",
@@ -1771,7 +1797,10 @@ function buildPropIdeas() {
 async function fetchOddsApi(url) {
   const res = await fetch(url);
   const remaining = res.headers.get("x-requests-remaining");
-  if (remaining !== null) state.oddsQuota = { remaining, used: res.headers.get("x-requests-used") };
+  if (remaining !== null) {
+    state.oddsQuota = { remaining, used: res.headers.get("x-requests-used") };
+    saveOddsUsage({ toaUsed: Number(state.oddsQuota.used) || null }); // authoritative from headers
+  }
   if (!res.ok) throw new Error(`Odds API ${res.status}`);
   return res.json();
 }
@@ -1801,7 +1830,7 @@ async function loadOddsApi(force = false) {
   if (!state.oddsKey) return;
   let events;
   const cached = loadJSON(ODDS_CACHE_KEY, null);
-  if (!force && cached && Date.now() - cached.ts < ODDS_CACHE_TTL_MS) {
+  if (!force && cached && Date.now() - cached.ts < oddsTtl()) {
     events = cached.events;
     if (cached.quota && !state.oddsQuota) state.oddsQuota = cached.quota;
   } else {
@@ -1864,12 +1893,13 @@ async function loadSgo(force = false) {
   if (!state.sgoKey) return;
   let data;
   const cached = loadJSON(SGO_CACHE_KEY, null);
-  if (!force && cached && Date.now() - cached.ts < ODDS_CACHE_TTL_MS) {
+  if (!force && cached && Date.now() - cached.ts < oddsTtl()) {
     data = cached.data;
   } else {
     const json = await fetchJSON(`${SGO_HOST}/events?leagueID=NFL&oddsAvailable=true&limit=50&apiKey=${state.sgoKey}`);
     data = json?.data || json?.events || (Array.isArray(json) ? json : []);
     saveJSON(SGO_CACHE_KEY, { ts: Date.now(), data });
+    saveOddsUsage({ sgoObjects: oddsUsage().sgoObjects + (data?.length || 0) });
   }
   let games = 0, propCount = 0;
   for (const ev of data || []) {
@@ -2292,21 +2322,40 @@ function renderBetting() {
     : '<div class="loading">Parlay ideas need posted lines and projections.</div>';
 }
 
+function agoText(ts) {
+  if (!ts) return "never";
+  const mins = Math.round((Date.now() - ts) / 60000);
+  return mins < 1 ? "just now" : mins < 60 ? `${mins}m ago` : `${Math.round(mins / 60)}h ago`;
+}
+
 function renderOddsSettings() {
   const quotaEl = document.getElementById("odds-quota");
   if (!quotaEl) return;
+  const usage = oddsUsage();
   if (!state.oddsKey) {
     quotaEl.textContent = "No key saved yet — game lines above come from ESPN only.";
-  } else if (state.oddsQuota) {
-    quotaEl.textContent = `✅ Key active · ${state.oddsQuota.remaining} credits remaining this month.`;
   } else {
-    quotaEl.textContent = "✅ Key saved — lines will load on the next refresh.";
+    const ts = loadJSON(ODDS_CACHE_KEY, null)?.ts;
+    const q = state.oddsQuota
+      ? `${state.oddsQuota.remaining} credits left${paceNote(usage.toaUsed, 500)}`
+      : "lines will load on the next refresh";
+    quotaEl.textContent = `✅ Lines as of ${agoText(ts)} · ${q}`;
   }
   const sgoEl = document.getElementById("sgo-status");
-  if (!sgoEl) return;
-  sgoEl.textContent = !state.sgoKey
-    ? "No SGO key saved yet."
-    : (state.sgoStatus ? `✅ ${state.sgoStatus}` : "✅ Key saved — props will load on the next refresh.");
+  if (sgoEl) {
+    if (!state.sgoKey) {
+      sgoEl.textContent = "No SGO key saved yet.";
+    } else {
+      const ts = loadJSON(SGO_CACHE_KEY, null)?.ts;
+      sgoEl.textContent = `✅ ${state.sgoStatus || "props load on next refresh"} · as of ${agoText(ts)} · ~${usage.sgoObjects} objects used${paceNote(usage.sgoObjects, 2500)}`;
+    }
+  }
+  const boardEl = document.getElementById("odds-board");
+  if (boardEl) {
+    boardEl.innerHTML = `Refresh cadence auto-tunes to the NFL week: every <b>6h on game days</b> (Thu/Sun/Mon),
+      <b>12h midweek</b> — ESPN lines are free and refresh with the app every 10 minutes.
+      <button id="odds-force-refresh" class="btn" style="margin-left:8px">⟳ Force refresh lines now</button>`;
+  }
 }
 
 // ----- ESPN league sync (auto-fetch for public leagues, paste fallback) -----
@@ -2661,6 +2710,17 @@ function initEvents() {
       }
     }
   });
+  // Force-refresh lives inside the re-rendered settings panel — delegate.
+  document.getElementById("tab-betting").addEventListener("click", async (e) => {
+    if (!e.target.closest("#odds-force-refresh")) return;
+    e.target.textContent = "Refreshing…";
+    await Promise.allSettled([
+      loadOddsApi(true).catch(() => {}),
+      loadSgo(true).catch(() => {}),
+    ]);
+    renderBetting();
+  });
+
   document.getElementById("betting-games").addEventListener("click", async (e) => {
     const btn = e.target.closest("[data-prop-home]");
     if (!btn) return;

@@ -86,6 +86,29 @@ saturates the Prop Edges section all week; The Odds API refreshes a specific gam
 sharp real-time multi-book prices when you're about to bet. When both provide the same
 prop, the app keeps the best price. Both keys live in on-device storage only.
 
+### Odds orchestration (built-in quota efficiency)
+
+The app treats its three odds sources as a coordinated system rather than separate feeds:
+
+- **Roles**: ESPN = free always-on baseline (refreshes every 10 min) · SGO = bulk
+  week-wide props · The Odds API = sharp real-time prices on demand
+- **Adaptive cadence**: paid-tier pulls refresh every **6h on NFL game days**
+  (Thu/Sun/Mon) and every **12h midweek**, when lines barely move
+- **Usage metering**: The Odds API credits are tracked from its response headers
+  (authoritative) and SGO objects are estimated per pull; the settings panel shows a
+  **monthly pace projection** ("on pace ~140/500") and warns before you'd blow a quota
+- **Freshness**: every provider shows "lines as of Xm ago", plus a force-refresh button
+  when you want to burn a few credits for up-to-the-minute prices
+- **Merging**: ESPN → The Odds API → SGO fill each other's gaps; identical props keep
+  the best price with the source labeled
+
+Why not ten more providers? Most remaining "free" odds sources are unofficial
+sportsbook endpoints that browsers can't call (CORS-blocked, need a server), or
+~100-request/month tiers that duplicate prices we already have. Extra sources add
+prices, not information — the three-role system above already covers every market.
+The provider framework makes adding another (e.g. SharpAPI, OddsPapi) a small job if
+one proves worth it.
+
 Every feed fails gracefully — if one is down, its section just goes quiet instead of breaking the app.
 A note on Twitter/X: its API now costs $100+/month and blocks unauthenticated reads, so it can't be
 pulled into a free client-side app. The Reddit feeds cover the same breaking-news ground — beat
