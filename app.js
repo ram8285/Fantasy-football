@@ -195,6 +195,23 @@ const ESPN_SUMMARY_URL = (eventId) =>
 const BSKY_AUTHOR_FEED = (handle) =>
   `https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(handle)}&limit=10&filter=posts_no_replies`;
 const BSKY_HANDLES_KEY = "ghq_bsky_handles_v1";
+// Owner-curated insiders: Bills beat writers + national NFL reporters.
+// Ships as the default follow list; editable in the Bills tab (on-device).
+const DEFAULT_BSKY_HANDLES = [
+  "wyattcoverage.bsky.social",
+  "joebuscaglia.bsky.social",
+  "mattparrino.bsky.social",
+  "proant.bsky.social",
+  "mattlombardo.bsky.social",
+  "greggrosenthal.bsky.social",
+  "bytimgraham.bsky.social",
+  "minakimes.bsky.social",
+  "rapsheet.bsky.social",
+  "agetzenberg.bsky.social",
+  "matthewfairburn.bsky.social",
+  "kfitz134.bsky.social",
+  "salmaiorana.bsky.social",
+];
 const LIVE_REFRESH_MS = 45 * 1000; // in-game feed cadence
 
 // The Odds API (user-supplied key, stored on-device only — never in the repo).
@@ -347,7 +364,7 @@ const state = {
   teamSchedule: [],       // [{date, shortName, result}]
   billsGameThread: null,  // stickied game-thread post {id, title} when found
   billsLive: { plays: [], gtComments: [], liveBsky: [], authorPosts: [] },
-  bskyHandles: loadJSON(BSKY_HANDLES_KEY, []),
+  bskyHandles: loadJSON(BSKY_HANDLES_KEY, DEFAULT_BSKY_HANDLES),
   injuryByTeam: new Map(),// team abbr -> [{name, status, comment}]
   dvp: null,              // def team -> {QB:rank, RB:rank, WR:rank, TE:rank} 1=easiest
   draftSlot: loadJSON(DRAFT_SLOT_KEY, 5),
