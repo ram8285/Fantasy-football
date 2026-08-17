@@ -9,7 +9,7 @@ without needing Twitter or social media apps.
 
 | Tab | What it does |
 | --- | --- |
-| 📰 **News** | One merged, time-sorted feed: ESPN's wire **plus r/fantasyfootball and r/nfl hot posts** — where breaking fantasy news usually lands minutes after it happens (the closest free thing to old fantasy Twitter). Source badges, upvote counts, injury flagging, auto-refresh every 10 minutes, 🔔 bell for alerts. |
+| 📰 **News** | One merged, time-sorted, deduped feed from six sources: ESPN's wire, **Bluesky** (where NFL insiders landed after Twitter — real-time posts with author handles and like counts, spam-filtered), **ProFootballTalk** and **FantasyPros** (via RSS relay), plus **r/fantasyfootball** and **r/nfl** hot posts. Source badges, injury flagging, ⭐ your-player highlighting, auto-refresh every 10 minutes, 🔔 bell for alerts. |
 | 🦬 **Bills** | A dedicated Buffalo Bills HQ — all Bills news, not just fantasy: ESPN's team-filtered wire, **r/buffalobills**, and Bills stories filtered out of the league-wide feeds, deduped into one stream. Plus the official injury report with practice notes, live record/standings, the schedule with results, this week's game with the betting line and weather, and any Bills players moving on the fantasy waiver wire. (Five config values in `app.js` — `MY_NFL_TEAM` — retarget the whole tab to another franchise.) |
 | 🧠 **Start/Sit** | The lineup optimizer. Add your roster once (or import your draft picks) and it builds your optimal lineup every week: real weekly projections scored with **your league's exact rules**, adjusted for matchup strength — **position-specific defense-vs-position ranks** computed from real box scores in-season (overall points-allowed early on) — plus **Vegas implied team totals** and **live stadium weather** (18+ mph wind downgrades QBs and kickers; domes ignored). Knows your OP slot can hold a second QB, benches players on bye or ruled Out, and flags close calls. |
 | 💎 **Sleepers** | Three data-driven lists: **waiver heaters** (players ranked outside the top 100 that thousands of managers are adding right now), **rank risers** (players climbing the consensus rankings between your visits), and in-season **📊 usage spikes** — targets + carries week-over-week from real box scores, because volume arrives a week before points do. |
@@ -64,7 +64,9 @@ Tap the 🔔 bell in the top bar to enable alerts. While the app is open it chec
 | --- | --- |
 | [Sleeper API](https://docs.sleeper.com/) | Full NFL player database, consensus ranks, weekly projections, weekly box-score stats (for defense-vs-position), 24-hour trending adds/drops |
 | ESPN public APIs | Live NFL headlines, weekly schedule + byes, Vegas odds (implied team totals), team defensive stats, league-wide injury report |
-| Reddit JSON (r/fantasyfootball, r/nfl) | Breaking-news feed — the fastest free fantasy news signal now that Twitter/X's API is paywalled |
+| Reddit JSON (r/fantasyfootball, r/nfl, r/buffalobills, r/sportsbook) | Breaking-news + betting-buzz feeds — the fastest free fantasy news signal now that Twitter/X's API is paywalled |
+| [Bluesky public API](https://public.api.bsky.app) | Real-time insider posts — the actual Twitter replacement, key-free and browser-callable |
+| ProFootballTalk + FantasyPros RSS (via [allorigins](https://allorigins.win) relay) | Professional NFL reporting and fantasy-focused player news; relay used because browsers can't read RSS cross-origin |
 | [FantasyFootballCalculator ADP](https://fantasyfootballcalculator.com/adp) | Real **2-QB format** ADP for the draft Pick Advisor |
 | [Open-Meteo](https://open-meteo.com/) | Game-day stadium weather (wind/rain/temp) for outdoor venues |
 

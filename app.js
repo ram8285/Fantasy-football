@@ -159,6 +159,19 @@ const REDDIT_URLS = [
 ];
 // 2-QB ADP — matches this league's format exactly.
 const ADP_URL = "https://fantasyfootballcalculator.com/api/v1/adp/2qb?teams=10";
+
+// Bluesky — where NFL insiders landed after Twitter. Public API, no key, CORS-open.
+const BSKY_SEARCH = (q) =>
+  `https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts?q=${encodeURIComponent(q)}&sort=latest&limit=15`;
+
+// RSS feeds reached through a free CORS relay (browsers can't read RSS directly).
+// Both fail gracefully if the relay or feed is down.
+const RSS_RELAY = (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+const RSS_FEEDS = [
+  { url: "https://profootballtalk.nbcsports.com/feed/", tag: "PFT" },
+  { url: "https://www.fantasypros.com/nfl/rss/news.php", tag: "FantasyPros" },
+];
+const SPORTSBOOK_REDDIT_URL = "https://www.reddit.com/r/sportsbook/hot.json?limit=15";
 // ESPN and Sleeper agree on team codes except Washington.
 const ESPN_TO_SLEEPER = { WSH: "WAS" };
 
@@ -318,6 +331,10 @@ const state = {
   oddsShop: new Map(),    // home abbr -> {eventId, spreads, totals, h2h best prices}
   propLines: new Map(),   // home abbr -> Map("player|market" -> {point, price, book})
   toaPropsLoaded: new Set(), // games whose TOA prop lines were fetched this session
+  rssNews: [],            // [{title, desc, url, ts, tag}] from RSS relays
+  bskyPosts: [],          // fantasy-football Bluesky posts
+  bskyBills: [],          // team Bluesky posts
+  sportsbookPosts: [],    // r/sportsbook buzz
   teamNews: [],           // ESPN articles filtered to MY_NFL_TEAM
   teamReddit: [],         // team subreddit posts
   teamInfo: null,         // {record, standing}
@@ -371,6 +388,53 @@ async function fetchJSON(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
   return res.json();
+}
+
+// Fetch with a hard timeout — used for relays/third parties that can hang.
+async function fetchWithTimeout(url, ms = 8000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`${res.status} for ${url}`);
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchRss(feed) {
+  const res = await fetchWithTimeout(RSS_RELAY(feed.url));
+  const xml = new DOMParser().parseFromString(await res.text(), "text/xml");
+  return [...xml.querySelectorAll("item")].slice(0, 12).map((item) => {
+    const get = (sel) => item.querySelector(sel)?.textContent?.trim() || "";
+    const desc = get("description").replace(/<[^>]*>/g, "").slice(0, 180);
+    return {
+      title: get("title"),
+      desc,
+      url: get("link"),
+      ts: new Date(get("pubDate") || Date.now()).getTime(),
+      tag: feed.tag,
+    };
+  }).filter((it) => it.title);
+}
+
+async function fetchBsky(query) {
+  const res = await fetchWithTimeout(BSKY_SEARCH(query));
+  const json = await res.json();
+  return (json?.posts || [])
+    .filter((p) => (p.likeCount ?? 0) >= 2 && p.record?.text) // cut spam
+    .map((p) => {
+      const rkey = String(p.uri || "").split("/").pop();
+      return {
+        title: p.record.text.slice(0, 220),
+        desc: "",
+        url: `https://bsky.app/profile/${p.author?.handle}/post/${rkey}`,
+        ts: new Date(p.record.createdAt || Date.now()).getTime(),
+        tag: "Bluesky",
+        extra: `@${p.author?.handle || "?"} · ♥ ${p.likeCount ?? 0}`,
+      };
+    });
 }
 
 async function loadPlayers(force = false) {
@@ -515,6 +579,35 @@ async function loadAll(force = false) {
       .catch(() => { /* injury report unavailable */ }),
 
     loadAdp().catch(() => { /* ADP unavailable */ }),
+
+    // --- Extra news layers: Bluesky, RSS relays, betting buzz ---
+    fetchBsky("fantasy football")
+      .then((posts) => { state.bskyPosts = posts; })
+      .catch(() => { /* bluesky unavailable */ }),
+
+    fetchBsky(`${MY_NFL_TEAM.name}`)
+      .then((posts) => { state.bskyBills = posts; })
+      .catch(() => { /* bluesky unavailable */ }),
+
+    Promise.allSettled(RSS_FEEDS.map(fetchRss))
+      .then((results) => {
+        state.rssNews = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+      }),
+
+    fetchJSON(SPORTSBOOK_REDDIT_URL)
+      .then((d) => {
+        state.sportsbookPosts = (d?.data?.children || [])
+          .map((c) => c.data)
+          .filter((p) => p && !p.stickied && !p.over_18)
+          .slice(0, 10)
+          .map((p) => ({
+            title: p.title,
+            url: `https://www.reddit.com${p.permalink}`,
+            ts: p.created_utc * 1000,
+            score: p.ups || 0,
+          }));
+      })
+      .catch(() => { /* r/sportsbook unavailable */ }),
 
     // --- The user's NFL team feeds ---
     fetchJSON(TEAM_NEWS_URL)
@@ -953,11 +1046,34 @@ function mentionsMyPlayer(text) {
   return null;
 }
 
+function srcClass(tag) {
+  if (tag === "ESPN") return "espn";
+  if (tag === "Bluesky") return "bsky";
+  if (String(tag).startsWith("r/")) return "reddit";
+  return "other";
+}
+
+function newsCard(it) {
+  const isInjury = INJURY_RE.test(it.title + " " + (it.desc || ""));
+  const mine = mentionsMyPlayer(it.title + " " + (it.desc || ""));
+  return `<a class="news-card ${mine ? "my-player-card" : ""}" href="${escapeHtml(it.url)}" target="_blank" rel="noopener">
+    <h3>${escapeHtml(it.title)}</h3>
+    ${it.desc ? `<p>${escapeHtml(it.desc)}</p>` : ""}
+    <div class="news-meta">
+      <span class="src-badge src-${srcClass(it.tag)}">${escapeHtml(it.tag)}</span>
+      <span>${timeAgo(it.ts)}</span>
+      ${it.extra ? `<span>${escapeHtml(it.extra)}</span>` : ""}
+      ${mine ? '<span class="news-badge my-player-badge">⭐ YOUR PLAYER</span>' : ""}
+      ${isInjury ? '<span class="news-badge">⚕ injury-related</span>' : ""}
+    </div>
+  </a>`;
+}
+
 function renderNews() {
   const el = document.getElementById("news-list");
-  if (!state.news.length && !state.reddit.length) return; // error shown, or loading
+  if (!state.news.length && !state.reddit.length && !state.rssNews.length && !state.bskyPosts.length) return;
 
-  // Merge ESPN articles + Reddit posts into one time-sorted feed.
+  // Merge every source into one time-sorted, deduped feed.
   const items = [
     ...state.news.map((a) => ({
       title: a.headline,
@@ -975,23 +1091,20 @@ function renderNews() {
       tag: p.tag,
       extra: `▲ ${p.score.toLocaleString()}`,
     })),
-  ].sort((a, b) => b.ts - a.ts).slice(0, 80);
-
-  el.innerHTML = items.map((it) => {
-    const isInjury = INJURY_RE.test(it.title + " " + it.desc);
-    const mine = mentionsMyPlayer(it.title + " " + it.desc);
-    return `<a class="news-card ${mine ? "my-player-card" : ""}" href="${escapeHtml(it.url)}" target="_blank" rel="noopener">
-      <h3>${escapeHtml(it.title)}</h3>
-      ${it.desc ? `<p>${escapeHtml(it.desc)}</p>` : ""}
-      <div class="news-meta">
-        <span class="src-badge src-${it.tag === "ESPN" ? "espn" : "reddit"}">${escapeHtml(it.tag)}</span>
-        <span>${timeAgo(it.ts)}</span>
-        ${it.extra ? `<span>${escapeHtml(it.extra)}</span>` : ""}
-        ${mine ? '<span class="news-badge my-player-badge">⭐ YOUR PLAYER</span>' : ""}
-        ${isInjury ? '<span class="news-badge">⚕ injury-related</span>' : ""}
-      </div>
-    </a>`;
-  }).join("");
+    ...state.rssNews.map((it) => ({ ...it, extra: "" })),
+    ...state.bskyPosts,
+  ];
+  const seenTitles = new Set();
+  el.innerHTML = items
+    .filter((it) => {
+      const key = normName(it.title).slice(0, 60);
+      if (seenTitles.has(key)) return false;
+      seenTitles.add(key);
+      return true;
+    })
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, 90)
+    .map(newsCard).join("");
 }
 
 // ----- Shared player row -----
@@ -1452,6 +1565,8 @@ function renderBills() {
     ...state.reddit.filter((p) => TEAM_WORD_RE.test(p.title)).map((p) => ({
       title: p.title, desc: "", url: p.url, ts: p.ts, tag: p.tag, extra: `▲ ${p.score.toLocaleString()}`,
     })),
+    ...state.bskyBills,
+    ...state.rssNews.filter((it) => TEAM_WORD_RE.test(it.title + " " + it.desc)).map((it) => ({ ...it, extra: "" })),
   ];
   const seenTitles = new Set();
   const deduped = items
@@ -1464,16 +1579,7 @@ function renderBills() {
     .sort((a, b) => b.ts - a.ts)
     .slice(0, 50);
   newsEl.innerHTML = deduped.length
-    ? deduped.map((it) => `<a class="news-card" href="${escapeHtml(it.url)}" target="_blank" rel="noopener">
-        <h3>${escapeHtml(it.title)}</h3>
-        ${it.desc ? `<p>${escapeHtml(it.desc)}</p>` : ""}
-        <div class="news-meta">
-          <span class="src-badge src-${it.tag === "ESPN" ? "espn" : "reddit"}">${escapeHtml(it.tag)}</span>
-          <span>${timeAgo(it.ts)}</span>
-          ${it.extra ? `<span>${escapeHtml(it.extra)}</span>` : ""}
-          ${INJURY_RE.test(it.title + " " + it.desc) ? '<span class="news-badge">⚕ injury-related</span>' : ""}
-        </div>
-      </a>`).join("")
+    ? deduped.map(newsCard).join("")
     : '<div class="loading">No Bills news right now.</div>';
 }
 
@@ -1904,6 +2010,9 @@ function maybeNotify() {
     ...state.reddit.map((p) => ({ text: p.title, body: p.flair || "" })),
     ...state.teamNews.map((a) => ({ text: a.headline, body: a.description || "" })),
     ...state.teamReddit.map((p) => ({ text: p.title, body: p.flair || "" })),
+    ...state.rssNews.map((it) => ({ text: it.title, body: it.desc || "" })),
+    ...state.bskyPosts.map((it) => ({ text: it.title, body: "" })),
+    ...state.bskyBills.map((it) => ({ text: it.title, body: "" })),
   ];
   // Priority pass: headlines about MY players get their own alert budget.
   let myFired = 0;
@@ -2538,6 +2647,18 @@ function renderBetting() {
         <div class="bet-sub">${escapeHtml(pl.why)}</div>
       </div>`).join("")
     : '<div class="loading">Parlay ideas need posted lines and projections.</div>';
+
+  const buzzEl = document.getElementById("betting-buzz");
+  buzzEl.innerHTML = state.sportsbookPosts.length
+    ? state.sportsbookPosts.map((p) => `<a class="news-card" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">
+        <h3>${escapeHtml(p.title)}</h3>
+        <div class="news-meta">
+          <span class="src-badge src-reddit">r/sportsbook</span>
+          <span>${timeAgo(p.ts)}</span>
+          <span>▲ ${p.score.toLocaleString()}</span>
+        </div>
+      </a>`).join("")
+    : '<div class="loading">r/sportsbook quiet right now.</div>';
 
   renderLedger();
 }
