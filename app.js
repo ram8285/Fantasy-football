@@ -580,6 +580,7 @@ async function loadAll(force = false) {
     await loadSgo().catch((e) => { state.sgoStatus = `SGO error: ${e.message}`; });
     recordOptimizerWeek();
     await evaluateOptimizerWeeks().catch(() => { /* stats not posted yet */ });
+    await loadUsageTrends().catch(() => { /* stats not posted yet */ });
   }
 
   state.trendMap = new Map();
@@ -1076,6 +1077,19 @@ function boardValue(p) {
   return Math.max(4, 32 - 5 * Math.log(p.lrank || 200));
 }
 
+// Roster-need multiplier shared by the Pick Advisor and the mock simulator.
+function needFactorFor(c, rosterSize, pos) {
+  switch (pos) {
+    case "QB": return c.QB < 2 ? 1.1 : c.QB === 2 ? 0.5 : 0.2; // 2-QB league
+    case "RB": return c.RB < 2 ? 1.05 : Math.max(0.55, 0.9 - (c.RB - 2) * 0.08);
+    case "WR": return c.WR < 2 ? 1.05 : Math.max(0.55, 0.9 - (c.WR - 2) * 0.08);
+    case "TE": return c.TE < 1 ? 1.0 : 0.4;
+    case "K": return c.K >= 1 ? 0.05 : rosterSize >= 12 ? 1.1 : rosterSize >= 10 ? 0.5 : 0.12;
+    case "DEF": return c.DEF >= 1 ? 0.05 : rosterSize >= 11 ? 1.1 : rosterSize >= 9 ? 0.5 : 0.12;
+    default: return 0.5;
+  }
+}
+
 function myPickNumbers(slot) {
   const picks = [];
   for (let r = 1; r <= DRAFT_ROUNDS; r++) {
@@ -1103,17 +1117,8 @@ function computeDraftAdvice() {
   const nextMyPick = myPicks.find((n) => n >= currentPick) ?? currentPick;
   const followingMyPick = myPicks.find((n) => n > nextMyPick) ?? nextMyPick + 19;
 
-  const needFactor = (pos) => {
-    switch (pos) {
-      case "QB": return qb < 2 ? 1.1 : qb === 2 ? 0.5 : 0.2;   // 2-QB league: 2 starters + maybe 1 backup
-      case "RB": return rb < 2 ? 1.05 : Math.max(0.55, 0.9 - (rb - 2) * 0.08);
-      case "WR": return wr < 2 ? 1.05 : Math.max(0.55, 0.9 - (wr - 2) * 0.08);
-      case "TE": return te < 1 ? 1.0 : 0.4;
-      case "K": return k >= 1 ? 0.05 : rosterSize >= 12 ? 1.1 : rosterSize >= 10 ? 0.5 : 0.12;
-      case "DEF": return dst >= 1 ? 0.05 : rosterSize >= 11 ? 1.1 : rosterSize >= 9 ? 0.5 : 0.12;
-      default: return 0.5;
-    }
-  };
+  const counts = { QB: qb, RB: rb, WR: wr, TE: te, K: k, DEF: dst };
+  const needFactor = (pos) => needFactorFor(counts, rosterSize, pos);
 
   const tierSize = { QB: 20, RB: 24, WR: 24, TE: 12, K: 10, DEF: 10 };
   const available = state.players.filter((p) => !state.draft[p.id] && !/^(Out|IR|Sus|NA)/i.test(p.injury || ""));
@@ -1153,6 +1158,77 @@ function computeDraftAdvice() {
   }
 
   return { currentPick, nextMyPick, top: scoredCandidates.slice(0, 3), waits };
+}
+
+// ----- Mock draft simulator -----
+// Simulates the REST of the draft from the current board state, in memory —
+// the real draft tracker is never touched. AI teams pick near their 2-QB ADP
+// with noise and simple roster logic; my picks use the advisor's need-scoring.
+function runMockDraft() {
+  const pool = state.players
+    .filter((p) => !state.draft[p.id] && !/^(Out|IR|Sus)/i.test(p.injury || ""))
+    .slice(0, 400)
+    .sort((a, b) => (adpOf(a) ?? (a.mrank || 250) * 1.1) - (adpOf(b) ?? (b.mrank || 250) * 1.1));
+  const finalMine = state.players.filter((p) => state.draft[p.id] === "mine").map((p) => p.id);
+  const slot = state.draftSlot;
+  const aiCounts = {};
+  const myLog = [];
+  const posCountsOf = (ids) => {
+    const c = { QB: 0, RB: 0, WR: 0, TE: 0, K: 0, DEF: 0 };
+    for (const id of ids) { const p = state.byId.get(id); if (p) c[p.pos]++; }
+    return c;
+  };
+  const takeFrom = (arr, p) => arr.splice(arr.indexOf(p), 1);
+
+  const startPick = Object.keys(state.draft).length + 1;
+  for (let pick = startPick; pick <= TEAMS_IN_LEAGUE * DRAFT_ROUNDS && pool.length; pick++) {
+    const round = Math.ceil(pick / TEAMS_IN_LEAGUE);
+    const idxInRound = pick - (round - 1) * TEAMS_IN_LEAGUE;
+    const teamIdx = round % 2 === 1 ? idxInRound : TEAMS_IN_LEAGUE + 1 - idxInRound;
+
+    if (teamIdx === slot && finalMine.length < DRAFT_ROUNDS) {
+      const counts = posCountsOf(finalMine);
+      const scored = pool
+        .map((p) => ({ p, s: boardValue(p) * needFactorFor(counts, finalMine.length, p.pos) }))
+        .sort((a, b) => b.s - a.s);
+      const best = scored[0].p;
+      const alts = scored.slice(1, 3).map((x) => x.p.name);
+      finalMine.push(best.id);
+      takeFrom(pool, best);
+      myLog.push({ round, pick, p: best, alts });
+    } else {
+      const c = (aiCounts[teamIdx] ||= { QB: 0, RB: 0, WR: 0, TE: 0, K: 0, DEF: 0, n: 0 });
+      const caps = { QB: 3, RB: 8, WR: 8, TE: 3, K: 1, DEF: 1 };
+      const eligible = pool.filter((p) =>
+        c[p.pos] < caps[p.pos] && ((p.pos !== "K" && p.pos !== "DEF") || round >= 12));
+      const cands = (eligible.length ? eligible : pool).slice(0, 5);
+      const choice = cands[Math.floor(Math.random() * Math.min(3, cands.length))];
+      c[choice.pos]++; c.n++;
+      takeFrom(pool, choice);
+    }
+  }
+  return { myLog, finalMine };
+}
+
+function renderMockResult({ myLog, finalMine }) {
+  const el = document.getElementById("mock-result");
+  const roster = finalMine.map((id) => state.byId.get(id)).filter(Boolean);
+  const { starters } = optimizeLineup(roster);
+  const total = starters.reduce((s, x) => s + (x.pick?.adjusted || 0), 0);
+  let html = `<div class="advisor-status">Mock complete — your simulated roster projects
+    <b>${total.toFixed(1)}</b> as an optimal lineup. AI picks are randomized around ADP: run it again for a different board.</div>`;
+  html += myLog.map((m) => `<div class="player-row">
+    <div class="rank-num">R${m.round}</div>
+    <div class="player-info">
+      <div class="player-name">Pick ${m.pick}: ${escapeHtml(m.p.name)}</div>
+      <div class="player-sub">
+        <span class="pos-tag pos-${m.p.pos}">${m.p.pos === "DEF" ? "D/ST" : m.p.pos}${posRank(m.p)}</span>
+        ${adpOf(m.p) !== null ? `<span class="mkt-note">ADP ${adpOf(m.p)}</span>` : ""}
+        ${m.alts.length ? `<span>also there: ${m.alts.map(escapeHtml).join(", ")}</span>` : ""}
+      </div>
+    </div>
+  </div>`).join("");
+  el.innerHTML = html;
 }
 
 function renderDraftAdvisor() {
@@ -1668,6 +1744,106 @@ function renderSleepers() {
   } else {
     riseEl.innerHTML = '<div class="loading">Risers are computed by comparing rankings between visits at least 12 hours apart. Check back tomorrow.</div>';
   }
+
+  renderUsageTrends();
+}
+
+// ----- Usage-spike breakout detector (in-season) -----
+const USAGE_KEY = "ghq_usage_v1";
+
+async function loadUsageTrends() {
+  if (state.seasonType !== 2 || !state.week || state.week < 2) return;
+  const cached = loadJSON(USAGE_KEY, null);
+  if (cached && cached.week === state.week && Date.now() - cached.ts < 12 * 60 * 60 * 1000) {
+    state.usageTrends = cached.list;
+    return;
+  }
+  const norm = (raw) => Array.isArray(raw)
+    ? new Map(raw.map((r) => [String(r.player_id), r.stats || r]))
+    : new Map(Object.entries(raw || {}));
+  const last = norm(await fetchJSON(statsUrl(state.seasonYear, state.week - 1)));
+  const prev = state.week >= 3
+    ? norm(await fetchJSON(statsUrl(state.seasonYear, state.week - 2)))
+    : new Map();
+  const use = (s) => (Number(s?.rec_tgt) || 0) + (Number(s?.rush_att) || 0);
+  const list = [];
+  for (const [pid, s] of last) {
+    const p = state.byId.get(String(pid));
+    if (!p || !["RB", "WR", "TE"].includes(p.pos)) continue;
+    const lastUse = use(s);
+    if (lastUse < 8) continue; // real volume only
+    const prevUse = use(prev.get(String(pid)));
+    const delta = lastUse - prevUse;
+    if (delta < 4) continue;
+    list.push({ id: p.id, lastUse, prevUse, delta });
+  }
+  list.sort((a, b) => b.delta - a.delta);
+  state.usageTrends = list.slice(0, 10);
+  saveJSON(USAGE_KEY, { ts: Date.now(), week: state.week, list: state.usageTrends });
+}
+
+function renderUsageTrends() {
+  const el = document.getElementById("sleepers-usage");
+  if (!el) return;
+  if (!state.usageTrends?.length) return; // keep the explainer text
+  el.innerHTML = state.usageTrends.map((u) => {
+    const p = state.byId.get(u.id);
+    if (!p) return "";
+    return `<div class="waiver-card">
+      <div class="player-info">
+        <div class="player-name">${escapeHtml(p.name)}</div>
+        <div class="player-sub">
+          <span class="pos-tag pos-${p.pos}">${p.pos}${posRank(p)}</span>
+          <span>${escapeHtml(p.team)}</span>
+          <span>targets+carries ${u.prevUse} → ${u.lastUse} last week</span>
+          ${leagueAvailability(p.id)}
+        </div>
+      </div>
+      <div class="waiver-count"><b>▲ ${u.delta}</b><small>touches</small></div>
+    </div>`;
+  }).join("");
+}
+
+// ----- Bet ledger -----
+const LEDGER_KEY = "ghq_ledger_v1";
+
+function betProfit(b) {
+  if (b.status === "won") return b.odds > 0 ? b.stake * (b.odds / 100) : b.stake * (100 / Math.abs(b.odds));
+  if (b.status === "lost") return -b.stake;
+  return 0; // open or push
+}
+
+function renderLedger() {
+  const listEl = document.getElementById("ledger-list");
+  const statsEl = document.getElementById("ledger-stats");
+  if (!listEl) return;
+  const bets = loadJSON(LEDGER_KEY, []);
+  const settled = bets.filter((b) => b.status !== "open");
+  const w = settled.filter((b) => b.status === "won").length;
+  const l = settled.filter((b) => b.status === "lost").length;
+  const pu = settled.filter((b) => b.status === "push").length;
+  const net = settled.reduce((s, b) => s + betProfit(b), 0);
+  const staked = settled.reduce((s, b) => s + (b.status === "push" ? 0 : b.stake), 0);
+  statsEl.textContent = settled.length
+    ? `Record ${w}-${l}${pu ? `-${pu}` : ""} · net ${net >= 0 ? "+" : ""}$${net.toFixed(2)}${staked ? ` · ROI ${((net / staked) * 100).toFixed(1)}%` : ""}`
+    : "No settled bets yet — log bets here to learn which angle types actually win for you.";
+  listEl.innerHTML = bets.length
+    ? bets.slice().reverse().map((b) => `<div class="player-row ${b.status === "won" ? "is-mine" : b.status === "lost" ? "is-taken" : ""}">
+        <div class="player-info">
+          <div class="player-name">${escapeHtml(b.desc)}</div>
+          <div class="player-sub"><span>${b.odds > 0 ? "+" : ""}${b.odds} · $${b.stake}</span>
+            ${b.status !== "open" ? `<span class="trend-badge ${b.status === "won" ? "trend-add" : b.status === "lost" ? "trend-drop" : "mkt-note"}">${b.status}${b.status !== "push" ? ` ${betProfit(b) >= 0 ? "+" : ""}$${betProfit(b).toFixed(2)}` : ""}</span>` : ""}
+          </div>
+        </div>
+        <div class="row-actions">
+          ${b.status === "open" ? `
+            <button class="chip chip-mine" data-bet="${b.id}" data-res="won">W</button>
+            <button class="chip chip-taken" data-bet="${b.id}" data-res="lost">L</button>
+            <button class="chip" data-bet="${b.id}" data-res="push">P</button>` : ""}
+          <button class="chip" data-bet="${b.id}" data-res="delete">✕</button>
+        </div>
+      </div>`).join("")
+    : "";
 }
 
 // ----- Notifications -----
@@ -2362,6 +2538,8 @@ function renderBetting() {
         <div class="bet-sub">${escapeHtml(pl.why)}</div>
       </div>`).join("")
     : '<div class="loading">Parlay ideas need posted lines and projections.</div>';
+
+  renderLedger();
 }
 
 function agoText(ts) {
@@ -2935,6 +3113,43 @@ function initEvents() {
     } catch (err) {
       resultEl.innerHTML = `<div class="error-box">Couldn't read that. Make sure you copied the ENTIRE page from the link in step 2 (it should start with {"). ${escapeHtml(err.message)}</div>`;
     }
+  });
+
+  // Mock draft simulator
+  document.getElementById("mock-run").addEventListener("click", () => {
+    if (!state.players.length) return;
+    renderMockResult(runMockDraft());
+  });
+
+  // Bet ledger
+  document.getElementById("ledger-add").addEventListener("click", () => {
+    const desc = document.getElementById("ledger-desc").value.trim();
+    const odds = parseInt(document.getElementById("ledger-odds").value, 10);
+    const stake = parseFloat(document.getElementById("ledger-stake").value.replace("$", ""));
+    if (!desc || Number.isNaN(odds) || Number.isNaN(stake) || stake <= 0) {
+      alert("Need a description, American odds (e.g. -110), and a stake.");
+      return;
+    }
+    const bets = loadJSON(LEDGER_KEY, []);
+    bets.push({ id: String(Date.now()), desc, odds, stake, status: "open", ts: Date.now() });
+    saveJSON(LEDGER_KEY, bets);
+    document.getElementById("ledger-desc").value = "";
+    document.getElementById("ledger-odds").value = "";
+    document.getElementById("ledger-stake").value = "";
+    renderLedger();
+  });
+  document.getElementById("ledger-list").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-bet]");
+    if (!btn) return;
+    let bets = loadJSON(LEDGER_KEY, []);
+    if (btn.dataset.res === "delete") {
+      bets = bets.filter((b) => b.id !== btn.dataset.bet);
+    } else {
+      const bet = bets.find((b) => b.id === btn.dataset.bet);
+      if (bet) bet.status = btn.dataset.res;
+    }
+    saveJSON(LEDGER_KEY, bets);
+    renderLedger();
   });
 
   // Trade analyzer

@@ -128,6 +128,8 @@
   <div id="sleepers-heaters" class="card-list"><div class="loading">Loading…</div></div>
   <h3 class="waiver-head add" style="margin-top:18px">📈 Rank risers since your last visit</h3>
   <div id="sleepers-risers" class="card-list"><div class="loading">Come back tomorrow — risers are computed between visits.</div></div>
+  <h3 class="waiver-head add" style="margin-top:18px">📊 Usage spikes — volume arrives before points</h3>
+  <div id="sleepers-usage" class="card-list"><div class="loading">In-season only: compares each player's targets + carries week over week from real box scores.</div></div>
 </section>
 
 <!-- ==================== RANKINGS ==================== -->
@@ -169,6 +171,15 @@
     </div>
     <div id="advisor-body" class="advisor-body"><div class="loading">Loading…</div></div>
   </div>
+
+  <details class="roster-panel">
+    <summary>🎭 Mock draft simulator — rehearse before the real thing</summary>
+    <div class="myteam-tools">
+      <button id="mock-run" class="btn">▶ Simulate rest of draft</button>
+      <span class="subtitle">AI teams pick near 2-QB ADP with your slot's snake order; your picks use the advisor. Doesn't touch your real draft board.</span>
+    </div>
+    <div id="mock-result" class="player-list" style="padding:0 14px 14px"></div>
+  </details>
 
   <div class="draft-summary">
     <div class="draft-stat"><span id="draft-pick-count">0</span><label>picks made</label></div>
@@ -290,6 +301,18 @@
   <div id="betting-parlays" class="card-list"><div class="loading">Loading…</div></div>
   <h3 class="waiver-head" style="margin-top:18px">🏟 This week's board</h3>
   <div id="betting-games" class="card-list"><div class="loading">Loading…</div></div>
+
+  <details class="roster-panel" style="margin-top:16px">
+    <summary>🧾 Bet ledger — track what you actually bet</summary>
+    <div class="myteam-tools">
+      <input id="ledger-desc" class="trade-search" style="flex:2;margin-bottom:0" placeholder="Bet (e.g. KC -6.5)">
+      <input id="ledger-odds" class="trade-search" style="flex:0;width:90px;margin-bottom:0" inputmode="numeric" placeholder="-110">
+      <input id="ledger-stake" class="trade-search" style="flex:0;width:80px;margin-bottom:0" inputmode="decimal" placeholder="$">
+      <button id="ledger-add" class="btn">Add</button>
+    </div>
+    <div id="ledger-stats" class="subtitle" style="padding:0 14px 6px"></div>
+    <div id="ledger-list" class="card-list" style="padding:0 14px 14px"></div>
+  </details>
 </section>
 
 <!-- ==================== LEAGUE ==================== -->
