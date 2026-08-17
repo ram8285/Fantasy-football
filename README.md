@@ -16,6 +16,7 @@ without needing Twitter or social media apps.
 | 📊 **Rankings** | Live rankings **re-ranked for this league's 2-QB, 6-pt-pass-TD reality**: QBs are pulled up to superflex-calibrated slots (QB1 ≈ #1 overall, ~20 QBs with starter value), while a "▲ market #N" badge shows where standard 1-QB apps rank each player — that gap is your draft-day value edge. Position filters, positional ranks, injury tags, and trending badges included. |
 | 🎯 **Draft** | A live draft-day war room. Tap **MINE** / **GONE** as picks happen and the **🧭 Pick Advisor** recommends your next pick in real time: board value × your roster needs × "will they make it back to your next turn" (real 2-QB ADP + snake-draft math from your slot) × tier scarcity — each recommendation with plain-English reasons, plus "safe to wait" notes. Roster tracking by lineup slot, best-available, tier warnings (QB tier = 20 for this 2-QB format), ADP on every row. Picks saved on your device. |
 | 🔄 **Waivers** | Who the fantasy world is adding and dropping *right now* — trending player counts over the last 24 hours across all Sleeper leagues. This surfaces breaking news (injuries, depth chart changes, breakouts) even if you never see a tweet. |
+| 🔁 **Trade** | A need-aware trade analyzer: build both sides of a deal (pick the partner team to pull their real synced roster), and get a verdict from your optimal lineup's projected total before vs after, long-term board value in your league's 2-QB economy, and the partner's own lineup impact ("they may reject it"). Warns when a trade leaves you under two QBs or brings back an injured player. |
 | 🎲 **Betting** | Every market, as **starting points** generated from live data (ideas, not advice): a ranked **Best Bets board**; spread/ATS leans (live home dogs, shootout dogs, bad-weather backdoors); moneyline leans (short home favorites, low-total upset value); game total and team total leans (wind/rain unders, leaky-defense overs); **6-point teaser spots** (classic Wong: through the key numbers 3 and 7); player prop ideas backed by projected stat lines; and parlay builders — same-game stacks, chalk ML parlays, two-leg teasers, and a ticket from your own roster. Full game board with spreads, O/U, moneylines, implied totals, and weather. |
 | ⚙️ **My League** | Your ESPN league's full scoring settings — **every value is editable** in case the league changes rules before the season. Edit a value and the entire app re-analyzes instantly: projections re-score, the lineup optimizer re-runs, the QB draft-board boost recalibrates (drop passing TDs to 4 and it softens automatically), and the strategy notes rewrite themselves. Edits persist on your device; one tap resets to league defaults. |
 
@@ -32,6 +33,14 @@ My Roster → 📥 Sync from ESPN**:
      leaguemate already owns
    - **Start/Sit** shows a weekly head-to-head banner: your optimal lineup's projected
      total vs your actual opponent's
+   - **My League** gains 🏆 **Power Rankings** — every team's optimal-lineup strength in
+     your scoring, with records — and the **Trade tab** knows every roster
+   - The 📊 **Optimizer scoreboard** (Start/Sit) grades each week from real box scores:
+     what the optimizer projected, what its lineup actually scored, what your real ESPN
+     lineup scored, and how many points you left on the bench
+3. **⭐ My-player alerts**: news mentioning your rostered players is badged gold in every
+   feed, and injury headlines about them fire priority notifications with their own alert
+   budget
 
 If ESPN ever blocks direct browser connections (they don't document their CORS policy),
 the copy/paste fallback in the same panel always works: open the pre-built link, copy

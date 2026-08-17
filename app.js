@@ -325,6 +325,8 @@ const state = {
   injuryByTeam: new Map(),// team abbr -> [{name, status, comment}]
   dvp: null,              // def team -> {QB:rank, RB:rank, WR:rank, TE:rank} 1=easiest
   draftSlot: loadJSON(DRAFT_SLOT_KEY, 5),
+  tradeSend: [],          // player ids on my side of a proposed trade
+  tradeRecv: [],
   draft: loadDraft(),     // { [playerId]: "mine" | "taken" }
   myTeam: loadJSON(MYTEAM_KEY, []),      // [playerId]
   scoring: null,          // set at boot via loadScoring()
@@ -576,6 +578,8 @@ async function loadAll(force = false) {
       loadOddsApi().catch(() => { /* odds api unavailable or bad key */ }),
     ]);
     await loadSgo().catch((e) => { state.sgoStatus = `SGO error: ${e.message}`; });
+    recordOptimizerWeek();
+    await evaluateOptimizerWeeks().catch(() => { /* stats not posted yet */ });
   }
 
   state.trendMap = new Map();
@@ -921,6 +925,8 @@ function renderAll() {
   renderSleepers();
   renderBetting();
   renderBills();
+  renderTrade();
+  renderPowerRankings();
 }
 
 // ----- News -----
@@ -935,6 +941,16 @@ function timeAgo(iso) {
 }
 
 const INJURY_RE = /injur|out |questionable|doubtful|IR\b|carted|surgery|concussion|placed on|activated|ruled/i;
+
+// "Is one of MY players in this headline?" — powers ⭐ badges + priority alerts.
+function mentionsMyPlayer(text) {
+  const t = normName(text);
+  for (const id of state.myTeam) {
+    const p = state.byId.get(id);
+    if (p && p.pos !== "DEF" && t.includes(normName(p.name))) return p;
+  }
+  return null;
+}
 
 function renderNews() {
   const el = document.getElementById("news-list");
@@ -962,13 +978,15 @@ function renderNews() {
 
   el.innerHTML = items.map((it) => {
     const isInjury = INJURY_RE.test(it.title + " " + it.desc);
-    return `<a class="news-card" href="${escapeHtml(it.url)}" target="_blank" rel="noopener">
+    const mine = mentionsMyPlayer(it.title + " " + it.desc);
+    return `<a class="news-card ${mine ? "my-player-card" : ""}" href="${escapeHtml(it.url)}" target="_blank" rel="noopener">
       <h3>${escapeHtml(it.title)}</h3>
       ${it.desc ? `<p>${escapeHtml(it.desc)}</p>` : ""}
       <div class="news-meta">
         <span class="src-badge src-${it.tag === "ESPN" ? "espn" : "reddit"}">${escapeHtml(it.tag)}</span>
         <span>${timeAgo(it.ts)}</span>
         ${it.extra ? `<span>${escapeHtml(it.extra)}</span>` : ""}
+        ${mine ? '<span class="news-badge my-player-badge">⭐ YOUR PLAYER</span>' : ""}
         ${isInjury ? '<span class="news-badge">⚕ injury-related</span>' : ""}
       </div>
     </a>`;
@@ -1053,6 +1071,11 @@ function renderRankings() {
 const TEAMS_IN_LEAGUE = 10;
 const DRAFT_ROUNDS = 16;
 
+// Shared 2-QB-adjusted board value curve (used by advisor, trades, rankings).
+function boardValue(p) {
+  return Math.max(4, 32 - 5 * Math.log(p.lrank || 200));
+}
+
 function myPickNumbers(slot) {
   const picks = [];
   for (let r = 1; r <= DRAFT_ROUNDS; r++) {
@@ -1100,7 +1123,7 @@ function computeDraftAdvice() {
   }
 
   const scoredCandidates = available.slice(0, 60).map((p) => {
-    const v = Math.max(4, 32 - 5 * Math.log(p.lrank || 200));
+    const v = boardValue(p);
     const nf = needFactor(p.pos);
     const adp = adpOf(p);
     const goneByNextTurn = adp !== null && adp < nextMyPick;
@@ -1478,6 +1501,7 @@ function renderStartSit() {
   renderMyTeamManager();
   renderLineup();
   renderEspnStatus();
+  renderOptLog();
 }
 
 function renderMyTeamManager() {
@@ -1705,6 +1729,20 @@ function maybeNotify() {
     ...state.teamNews.map((a) => ({ text: a.headline, body: a.description || "" })),
     ...state.teamReddit.map((p) => ({ text: p.title, body: p.flair || "" })),
   ];
+  // Priority pass: headlines about MY players get their own alert budget.
+  let myFired = 0;
+  for (const h of headlines) {
+    const key = (h.text || "").slice(0, 120);
+    if (!key || seenNews.has(key)) continue;
+    const mine = mentionsMyPlayer(h.text + " " + h.body);
+    if (mine && INJURY_RE.test(h.text + " " + h.body)) {
+      seenNews.add(key);
+      if (!firstRun && myFired < 3) {
+        showNotification(`🚨 Your player: ${mine.name}`, h.text);
+        myFired++;
+      }
+    }
+  }
   for (const h of headlines) {
     const key = (h.text || "").slice(0, 120);
     if (!key || seenNews.has(key)) continue;
@@ -2366,14 +2404,21 @@ function renderOddsSettings() {
 function espnTeamsFrom(j) {
   const byName = new Map(state.players.map((p) => [normName(p.name), p.id]));
   const teams = (j.teams || []).map((t) => {
-    const players = (t.roster?.entries || [])
-      .map((e) => e.playerPoolEntry?.player?.fullName || e.playerPoolEntry?.player?.name)
-      .filter(Boolean);
+    const entries = t.roster?.entries || [];
+    const nameOf = (e) => e.playerPoolEntry?.player?.fullName || e.playerPoolEntry?.player?.name;
+    const players = entries.map(nameOf).filter(Boolean);
+    // lineupSlotId 20 = bench, 21 = IR — everything else is a starter.
+    const starterNames = entries
+      .filter((e) => e.lineupSlotId !== 20 && e.lineupSlotId !== 21)
+      .map(nameOf).filter(Boolean);
+    const rec = t.record?.overall;
     return {
       id: t.id,
       name: t.name || `${t.location || ""} ${t.nickname || ""}`.trim() || `Team ${t.id}`,
+      record: rec && typeof rec.wins === "number" ? `${rec.wins}-${rec.losses}` : null,
       players,
       ids: players.map((n) => byName.get(normName(n))).filter(Boolean),
+      starterIds: starterNames.map((n) => byName.get(normName(n))).filter(Boolean),
     };
   }).filter((t) => t.players.length);
   if (!teams.length) throw new Error("No rosters found — make sure you copied the whole page.");
@@ -2449,6 +2494,220 @@ function renderEspnStatus() {
   }
 }
 
+// ----- Trade analyzer -----
+function lineupTotalFor(ids) {
+  const roster = ids.map((id) => state.byId.get(id)).filter(Boolean);
+  if (!roster.length) return 0;
+  return optimizeLineup(roster).starters.reduce((s, x) => s + (x.pick?.adjusted || 0), 0);
+}
+
+function tradePlayerRow(p, side) {
+  return `<div class="player-row">
+    <div class="player-info">
+      <div class="player-name">${escapeHtml(p.name)}</div>
+      <div class="player-sub">
+        <span class="pos-tag pos-${p.pos}">${p.pos === "DEF" ? "D/ST" : p.pos}${posRank(p)}</span>
+        <span>${escapeHtml(p.team)}</span>
+        ${p.injury ? `<span class="trend-badge trend-drop">${escapeHtml(p.injury)}</span>` : ""}
+      </div>
+    </div>
+    <button class="chip chip-taken" data-trade-remove="${side}" data-id="${p.id}">✕</button>
+  </div>`;
+}
+
+function renderTrade() {
+  if (!state.players.length) return;
+  // Partner dropdown from the synced league (keep selection across renders).
+  const sel = document.getElementById("trade-partner");
+  const cur = sel.value;
+  const opts = ['<option value="">Any player (no partner selected)</option>'];
+  for (const t of state.espn?.teams || []) {
+    if (t.id === state.espnCfg.teamId) continue;
+    opts.push(`<option value="${t.id}">${escapeHtml(t.name)}${t.record ? ` (${t.record})` : ""}</option>`);
+  }
+  sel.innerHTML = opts.join("");
+  if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
+
+  const list = (ids, side) => ids.map((id) => state.byId.get(id)).filter(Boolean)
+    .map((p) => tradePlayerRow(p, side)).join("");
+  document.getElementById("trade-send-list").innerHTML =
+    list(state.tradeSend, "send") || '<div class="loading">No players added.</div>';
+  document.getElementById("trade-recv-list").innerHTML =
+    list(state.tradeRecv, "recv") || '<div class="loading">No players added.</div>';
+}
+
+function renderTradeSuggestions(side, query) {
+  const el = document.getElementById(side === "send" ? "trade-send-sugg" : "trade-recv-sugg");
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) { el.innerHTML = ""; return; }
+  let pool;
+  if (side === "send") {
+    pool = state.myTeam.map((id) => state.byId.get(id)).filter(Boolean);
+  } else {
+    const partnerId = Number(document.getElementById("trade-partner").value) || null;
+    const partner = partnerId && state.espn?.teams.find((t) => t.id === partnerId);
+    pool = partner
+      ? partner.ids.map((id) => state.byId.get(id)).filter(Boolean)
+      : state.players.filter((p) => !state.myTeam.includes(p.id));
+  }
+  const chosen = new Set([...state.tradeSend, ...state.tradeRecv]);
+  const matches = pool.filter((p) => !chosen.has(p.id) && p.name.toLowerCase().includes(q)).slice(0, 6);
+  el.innerHTML = matches.map((p) => `<div class="player-row">
+    <div class="player-info"><div class="player-name">${escapeHtml(p.name)}</div>
+      <div class="player-sub"><span class="pos-tag pos-${p.pos}">${p.pos === "DEF" ? "D/ST" : p.pos}</span><span>${escapeHtml(p.team)}</span></div>
+    </div>
+    <button class="chip chip-mine" data-trade-add="${side}" data-id="${p.id}">＋ ADD</button>
+  </div>`).join("");
+}
+
+function evaluateTrade() {
+  const el = document.getElementById("trade-result");
+  const send = state.tradeSend, recv = state.tradeRecv;
+  if (!send.length && !recv.length) {
+    el.innerHTML = '<div class="loading">Add players to both sides first.</div>';
+    return;
+  }
+  const afterMine = state.myTeam.filter((id) => !send.includes(id))
+    .concat(recv.filter((id) => !state.myTeam.includes(id)));
+  const beforeL = lineupTotalFor(state.myTeam);
+  const afterL = lineupTotalFor(afterMine);
+  const delta = afterL - beforeL;
+  const val = (ids) => ids.map((id) => state.byId.get(id)).filter(Boolean)
+    .reduce((s, p) => s + boardValue(p), 0);
+  const valDelta = val(recv) - val(send);
+
+  const notes = [];
+  const qbAfter = afterMine.map((id) => state.byId.get(id)).filter((p) => p?.pos === "QB").length;
+  if (qbAfter < 2) notes.push(`⚠ Leaves you with ${qbAfter} QB${qbAfter === 1 ? "" : "s"} — this is a 2-QB league, and replacement QBs are scarce.`);
+  for (const id of recv) {
+    const p = state.byId.get(id);
+    if (p && /^(Out|IR|Sus)/i.test(p.injury || "")) notes.push(`⚠ ${p.name} is currently ${p.injury} — factor in missed weeks.`);
+  }
+  for (const id of send) {
+    const p = state.byId.get(id);
+    if (p?.pos === "QB" && p.mrank - p.lrank >= 8) notes.push(`💡 ${p.name} is worth far more in this league than standard rankings say — don't price him at market.`);
+  }
+
+  // Partner impact when their roster is known.
+  let partnerHtml = "";
+  const partnerId = Number(document.getElementById("trade-partner").value) || null;
+  const partner = partnerId && state.espn?.teams.find((t) => t.id === partnerId);
+  if (partner) {
+    const theirAfter = partner.ids.filter((id) => !recv.includes(id))
+      .concat(send.filter((id) => !partner.ids.includes(id)));
+    const theirDelta = lineupTotalFor(theirAfter) - lineupTotalFor(partner.ids);
+    partnerHtml = `<div class="bet-sub">${escapeHtml(partner.name)}: lineup ${theirDelta >= 0 ? "+" : ""}${theirDelta.toFixed(1)} proj — ${theirDelta > 1 ? "they'll like this" : theirDelta < -1 ? "they may reject it" : "roughly neutral for them"}.</div>`;
+  }
+
+  const verdict = delta > 1.5 ? "✅ Verdict: ACCEPT — clear lineup upgrade"
+    : delta < -1.5 ? "❌ Verdict: DECLINE — your lineup gets worse"
+    : valDelta > 2 ? "👍 Verdict: LEAN ACCEPT — depth/value win, similar lineup"
+    : valDelta < -2 ? "👎 Verdict: LEAN DECLINE — you give up more long-term value"
+    : "🤝 Verdict: FAIR — decide on preference and injury risk";
+
+  el.innerHTML = `<div class="bet-card">
+    <div class="bet-head"><b>${verdict}</b></div>
+    <div class="bet-sub">Your optimal lineup: ${beforeL.toFixed(1)} → ${afterL.toFixed(1)} proj (${delta >= 0 ? "+" : ""}${delta.toFixed(1)})
+      · roster value ${valDelta >= 0 ? "+" : ""}${valDelta.toFixed(1)}</div>
+    ${partnerHtml}
+    ${notes.length ? `<ul class="bet-angles">${notes.map((n) => `<li>${escapeHtml(n)}</li>`).join("")}</ul>` : ""}
+  </div>`;
+}
+
+// ----- League power rankings (needs the ESPN league sync) -----
+function renderPowerRankings() {
+  const el = document.getElementById("power-rankings");
+  if (!el) return;
+  if (!state.espn?.teams?.length || !state.players.length) { el.innerHTML = ""; return; }
+  const ranked = state.espn.teams.map((t) => {
+    const roster = t.ids.map((id) => state.byId.get(id)).filter(Boolean);
+    const { starters, bench } = optimizeLineup(roster);
+    const starterTotal = starters.reduce((s, x) => s + (x.pick?.adjusted || 0), 0);
+    const benchValue = bench.slice(0, 5).reduce((s, x) => s + boardValue(x.p) * 0.1, 0);
+    return { t, score: starterTotal + benchValue, starterTotal };
+  }).sort((a, b) => b.score - a.score);
+  el.innerHTML = `<div class="scoring-section" style="margin-top:0"><h3>🏆 League Power Rankings</h3>
+    <p class="subtitle">Optimal-lineup strength from every synced roster, in your league's scoring.</p>
+    ${ranked.map((r, i) => `<div class="player-row ${r.t.id === state.espnCfg.teamId ? "is-mine" : ""}">
+      <div class="rank-num">${i + 1}</div>
+      <div class="player-info">
+        <div class="player-name">${escapeHtml(r.t.name)}${r.t.record ? ` <span class="mkt-note">${r.t.record}</span>` : ""}</div>
+        <div class="player-sub"><span>optimal lineup ${r.starterTotal.toFixed(1)} proj · ${r.t.ids.length} players matched</span></div>
+      </div>
+    </div>`).join("")}</div>`;
+}
+
+// ----- Optimizer scoreboard: projections vs what actually happened -----
+const OPTLOG_KEY = "ghq_optlog_v1";
+
+function recordOptimizerWeek() {
+  if (state.seasonType !== 2 || !state.week || !state.myTeam.length) return;
+  const log = loadJSON(OPTLOG_KEY, {});
+  const key = `${state.seasonYear}-w${state.week}`;
+  if (log[key]?.evaluated) return; // locked once graded
+  const roster = state.myTeam.map((id) => state.byId.get(id)).filter(Boolean);
+  if (!roster.length) return;
+  const { starters } = optimizeLineup(roster);
+  const mineTeam = state.espn?.teams?.find((t) => t.id === state.espnCfg.teamId);
+  log[key] = {
+    week: state.week,
+    year: state.seasonYear,
+    optIds: starters.map((s) => s.pick?.p.id).filter(Boolean),
+    optProj: Math.round(starters.reduce((s, x) => s + (x.pick?.adjusted || 0), 0) * 10) / 10,
+    actualStarterIds: mineTeam?.starterIds?.length ? mineTeam.starterIds : null,
+  };
+  saveJSON(OPTLOG_KEY, log);
+}
+
+async function evaluateOptimizerWeeks() {
+  if (state.seasonType !== 2 || !state.week) return;
+  const log = loadJSON(OPTLOG_KEY, {});
+  let changed = false;
+  for (const entry of Object.values(log)) {
+    if (entry.evaluated || entry.year !== state.seasonYear || entry.week >= state.week) continue;
+    try {
+      const stats = await fetchJSON(statsUrl(entry.year, entry.week));
+      const statEntries = Array.isArray(stats)
+        ? new Map(stats.map((r) => [String(r.player_id), r.stats || r]))
+        : new Map(Object.entries(stats || {}));
+      const total = (ids) => ids
+        ? Math.round(ids.reduce((s, id) => s + (statEntries.has(String(id)) ? leaguePoints(statEntries.get(String(id))) : 0), 0) * 10) / 10
+        : null;
+      entry.evaluated = { optActual: total(entry.optIds), startersActual: total(entry.actualStarterIds) };
+      changed = true;
+    } catch { /* stats not posted yet — retry next load */ }
+  }
+  if (changed) saveJSON(OPTLOG_KEY, log);
+}
+
+function renderOptLog() {
+  const el = document.getElementById("opt-scoreboard");
+  if (!el) return;
+  const log = loadJSON(OPTLOG_KEY, {});
+  const rows = Object.values(log).sort((a, b) => b.week - a.week).slice(0, 18);
+  if (!rows.length) {
+    el.innerHTML = '<div class="loading">Tracking starts in week 1 — each week logs what the optimizer projected, what its lineup actually scored, and what your real lineup scored.</div>';
+    return;
+  }
+  el.innerHTML = rows.map((r) => {
+    const ev = r.evaluated;
+    const diff = ev && ev.optActual !== null && ev.startersActual !== null
+      ? ev.optActual - ev.startersActual : null;
+    return `<div class="player-row">
+      <div class="rank-num">W${r.week}</div>
+      <div class="player-info">
+        <div class="player-sub">
+          <span>optimizer proj <b>${r.optProj}</b></span>
+          ${ev ? `<span>· optimal actual <b>${ev.optActual ?? "—"}</b></span>` : "<span>· awaiting results</span>"}
+          ${ev?.startersActual !== null && ev ? `<span>· your lineup <b>${ev.startersActual}</b></span>` : ""}
+          ${diff !== null && diff > 0.5 ? `<span class="trend-badge trend-drop">${diff.toFixed(1)} pts left on bench</span>` : ""}
+          ${diff !== null && diff <= 0.5 ? '<span class="trend-badge trend-add">you matched the optimizer ✓</span>' : ""}
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
 // ----- League (strategy notes + editable scoring) -----
 function renderStrategyNotes() {
   document.getElementById("strategy-notes").innerHTML = strategyNotes().map((n) =>
@@ -2458,7 +2717,7 @@ function renderStrategyNotes() {
 
 function renderLeague() {
   const el = document.getElementById("league-content");
-  let html = `<div id="strategy-notes"></div>
+  let html = `<div id="power-rankings"></div><div id="strategy-notes"></div>
     <div class="scoring-editor-head">
       <h3>Scoring Settings — editable</h3>
       <button id="scoring-reset" class="btn btn-danger">Reset to league defaults</button>
@@ -2676,6 +2935,33 @@ function initEvents() {
     } catch (err) {
       resultEl.innerHTML = `<div class="error-box">Couldn't read that. Make sure you copied the ENTIRE page from the link in step 2 (it should start with {"). ${escapeHtml(err.message)}</div>`;
     }
+  });
+
+  // Trade analyzer
+  document.getElementById("trade-send-search").addEventListener("input", (e) =>
+    renderTradeSuggestions("send", e.target.value));
+  document.getElementById("trade-recv-search").addEventListener("input", (e) =>
+    renderTradeSuggestions("recv", e.target.value));
+  document.getElementById("trade-partner").addEventListener("change", () =>
+    renderTradeSuggestions("recv", document.getElementById("trade-recv-search").value));
+  document.getElementById("tab-trade").addEventListener("click", (e) => {
+    const add = e.target.closest("[data-trade-add]");
+    if (add) {
+      const side = add.dataset.tradeAdd === "send" ? "tradeSend" : "tradeRecv";
+      if (!state[side].includes(add.dataset.id)) state[side].push(add.dataset.id);
+      document.getElementById(`trade-${add.dataset.tradeAdd}-search`).value = "";
+      renderTradeSuggestions(add.dataset.tradeAdd, "");
+      renderTrade();
+      return;
+    }
+    const rm = e.target.closest("[data-trade-remove]");
+    if (rm) {
+      const side = rm.dataset.tradeRemove === "send" ? "tradeSend" : "tradeRecv";
+      state[side] = state[side].filter((id) => id !== rm.dataset.id);
+      renderTrade();
+      return;
+    }
+    if (e.target.closest("#trade-eval")) evaluateTrade();
   });
 
   // The Odds API key + on-demand prop loading

@@ -280,6 +280,21 @@ span.chip-taken { border-color: var(--danger); color: var(--danger); }
 }
 .src-espn { background: rgba(248, 81, 73, 0.15); color: #ff8a80; }
 .src-reddit { background: rgba(255, 138, 76, 0.15); color: #ff9d5c; }
+.my-player-badge { background: rgba(255, 215, 0, 0.18); color: #ffd700; }
+.news-card.my-player-card { border-color: rgba(255, 215, 0, 0.45); }
+
+/* ---------- Trade analyzer ---------- */
+.trade-search {
+  width: 100%;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+}
+#trade-send-sugg, #trade-recv-sugg, #trade-send-list, #trade-recv-list { margin-bottom: 8px; }
 
 /* ---------- Vegas & weather badges ---------- */
 .mu-vegas { background: rgba(189, 147, 249, 0.15); color: #bd93f9; }

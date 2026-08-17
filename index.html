@@ -31,6 +31,7 @@
     <button class="tab" data-tab="rankings">📊 Rankings</button>
     <button class="tab" data-tab="draft">🎯 Draft</button>
     <button class="tab" data-tab="waivers">🔄 Waivers</button>
+    <button class="tab" data-tab="trade">🔁 Trade</button>
     <button class="tab" data-tab="betting">🎲 Betting</button>
     <button class="tab" data-tab="league">⚙️ My League</button>
   </nav>
@@ -110,6 +111,11 @@
   <div id="lineup-area">
     <div class="loading">Add your roster above to get an optimized lineup.</div>
   </div>
+
+  <details class="roster-panel" id="optlog-panel" style="margin-top:12px">
+    <summary>📊 Optimizer scoreboard — projections vs reality</summary>
+    <div id="opt-scoreboard" class="card-list" style="padding:4px 14px 14px"></div>
+  </details>
 </section>
 
 <!-- ==================== SLEEPERS ==================== -->
@@ -214,6 +220,31 @@
       <div id="waiver-drops" class="card-list"><div class="loading">Loading…</div></div>
     </div>
   </div>
+</section>
+
+<!-- ==================== TRADE ==================== -->
+<section id="tab-trade" class="tab-panel">
+  <div class="panel-head">
+    <h2>Trade Analyzer</h2>
+    <p class="subtitle">Verdicts use <strong>your league's 2-QB values</strong>, live projections, and — via ESPN sync — the other team's actual roster needs. ESPN's analyzer can't do that.</p>
+  </div>
+  <div class="waiver-cols">
+    <div class="waiver-col">
+      <h3 class="waiver-head drop">📤 You send</h3>
+      <input type="search" id="trade-send-search" class="trade-search" placeholder="Search your roster…" autocomplete="off">
+      <div id="trade-send-sugg" class="player-list"></div>
+      <div id="trade-send-list" class="player-list"></div>
+    </div>
+    <div class="waiver-col">
+      <h3 class="waiver-head add">📥 You receive</h3>
+      <select id="trade-partner" class="trade-search"><option value="">Any player (no partner selected)</option></select>
+      <input type="search" id="trade-recv-search" class="trade-search" placeholder="Search players to receive…" autocomplete="off">
+      <div id="trade-recv-sugg" class="player-list"></div>
+      <div id="trade-recv-list" class="player-list"></div>
+    </div>
+  </div>
+  <button id="trade-eval" class="btn" style="margin-top:12px">⚖️ Evaluate trade</button>
+  <div id="trade-result" style="margin-top:12px"></div>
 </section>
 
 <!-- ==================== BETTING ==================== -->
