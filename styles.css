@@ -282,6 +282,17 @@ span.chip-taken { border-color: var(--danger); color: var(--danger); }
 .src-reddit { background: rgba(255, 138, 76, 0.15); color: #ff9d5c; }
 .my-player-badge { background: rgba(255, 215, 0, 0.18); color: #ffd700; }
 .src-bsky { background: rgba(32, 139, 254, 0.18); color: #58a6ff; }
+.live-card { border-color: var(--danger); }
+.live-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--danger);
+  margin-right: 2px;
+  animation: livepulse 1.4s ease-in-out infinite;
+}
+@keyframes livepulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 .src-other { background: rgba(139, 233, 253, 0.12); color: #8be9fd; }
 .news-card.my-player-card { border-color: rgba(255, 215, 0, 0.45); }
 

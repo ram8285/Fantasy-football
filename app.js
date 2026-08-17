@@ -190,6 +190,12 @@ const TEAM_INFO_URL = `https://site.api.espn.com/apis/site/v2/sports/football/nf
 const TEAM_SCHEDULE_URL = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${MY_NFL_TEAM.espnSlug}/schedule`;
 const TEAM_REDDIT_URL = `https://www.reddit.com/r/${MY_NFL_TEAM.subreddit}/hot.json?limit=25`;
 const TEAM_WORD_RE = new RegExp(`\\b(bills|buffalo)\\b`, "i");
+const ESPN_SUMMARY_URL = (eventId) =>
+  `https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${eventId}`;
+const BSKY_AUTHOR_FEED = (handle) =>
+  `https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(handle)}&limit=10&filter=posts_no_replies`;
+const BSKY_HANDLES_KEY = "ghq_bsky_handles_v1";
+const LIVE_REFRESH_MS = 45 * 1000; // in-game feed cadence
 
 // The Odds API (user-supplied key, stored on-device only — never in the repo).
 // Free tier = 500 credits/month, so: featured lines cached 12h (3 credits per
@@ -339,6 +345,9 @@ const state = {
   teamReddit: [],         // team subreddit posts
   teamInfo: null,         // {record, standing}
   teamSchedule: [],       // [{date, shortName, result}]
+  billsGameThread: null,  // stickied game-thread post {id, title} when found
+  billsLive: { plays: [], gtComments: [], liveBsky: [], authorPosts: [] },
+  bskyHandles: loadJSON(BSKY_HANDLES_KEY, []),
   injuryByTeam: new Map(),// team abbr -> [{name, status, comment}]
   dvp: null,              // def team -> {QB:rank, RB:rank, WR:rank, TE:rank} 1=easiest
   draftSlot: loadJSON(DRAFT_SLOT_KEY, 5),
@@ -616,9 +625,12 @@ async function loadAll(force = false) {
 
     fetchJSON(TEAM_REDDIT_URL)
       .then((d) => {
-        state.teamReddit = (d?.data?.children || [])
-          .map((c) => c.data)
-          .filter((p) => p && !p.stickied && !p.over_18)
+        const raw = (d?.data?.children || []).map((c) => c.data).filter((p) => p && !p.over_18);
+        // Game threads are stickied — grab one for the live comment stream.
+        const gt = raw.find((p) => p.stickied && /game\s*thread|gameday|game\s*day/i.test(p.title || ""));
+        state.billsGameThread = gt ? { id: gt.id, title: gt.title, url: `https://www.reddit.com${gt.permalink}` } : null;
+        state.teamReddit = raw
+          .filter((p) => !p.stickied)
           .map((p) => ({
             title: p.title,
             url: `https://www.reddit.com${p.permalink}`,
@@ -675,6 +687,7 @@ async function loadAll(force = false) {
     await evaluateOptimizerWeeks().catch(() => { /* stats not posted yet */ });
     await loadUsageTrends().catch(() => { /* stats not posted yet */ });
   }
+  await loadBillsExtras().catch(() => { /* live extras unavailable */ });
 
   state.trendMap = new Map();
   for (const t of state.trendingAdd) state.trendMap.set(t.id, { add: t.count, drop: 0 });
@@ -716,6 +729,11 @@ function parseScoreboard(d) {
     state.schedule.set(a, { opp: h, homeAway: "away", date: ev.date, implied: aTotal });
     state.games.push({
       home: h, away: a, date: ev.date,
+      eventId: ev.id || null,
+      status: comp.status?.type?.state || "pre",          // pre | in | post
+      statusDetail: comp.status?.type?.shortDetail || "",  // e.g. "Q3 5:24"
+      hScore: home.score !== undefined ? Number(home.score) : null,
+      aScore: away.score !== undefined ? Number(away.score) : null,
       ou: typeof odds?.overUnder === "number" ? odds.overUnder : null,
       spread: typeof odds?.spread === "number" ? odds.spread : null,
       details: odds?.details || null,
@@ -1475,6 +1493,125 @@ function renderWaivers() {
   renderCol("waiver-drops", state.trendingDrop, "drops");
 }
 
+// ----- Bills live game feed -----
+function billsGameEntry() {
+  const T = MY_NFL_TEAM.sleeper;
+  return state.games.find((g) => g.home === T || g.away === T) || null;
+}
+
+// Pull everything that moves during a game: scoring plays, game-thread
+// comments, live Bluesky chatter, and followed insiders' posts.
+async function loadBillsExtras() {
+  const g = billsGameEntry();
+  const jobs = [];
+
+  if (g?.eventId) {
+    jobs.push(fetchJSON(ESPN_SUMMARY_URL(g.eventId)).then((d) => {
+      state.billsLive.plays = (d?.scoringPlays || []).map((sp) => ({
+        text: sp.text || "",
+        team: sp.team?.abbreviation || "",
+        period: sp.period?.number ?? "",
+        clock: sp.clock?.displayValue || "",
+        score: sp.awayScore !== undefined ? `${sp.awayScore}-${sp.homeScore}` : "",
+      }));
+    }).catch(() => { /* no summary yet */ }));
+  }
+
+  if (state.billsGameThread) {
+    jobs.push(fetchJSON(`https://www.reddit.com/comments/${state.billsGameThread.id}.json?sort=new&limit=40`)
+      .then((arr) => {
+        const children = arr?.[1]?.data?.children || [];
+        state.billsLive.gtComments = children
+          .filter((c) => c.kind === "t1")
+          .map((c) => c.data)
+          .filter((c) => c?.body && c.body !== "[deleted]" && c.author !== "AutoModerator")
+          .slice(0, 20)
+          .map((c) => ({
+            title: c.body.slice(0, 240),
+            desc: "",
+            url: state.billsGameThread.url,
+            ts: c.created_utc * 1000,
+            tag: "Game Thread",
+            extra: `u/${c.author} · ▲ ${c.ups || 0}`,
+          }));
+      }).catch(() => { /* thread comments unavailable */ }));
+  }
+
+  // Extra live searches only matter while the game is on.
+  if (g?.status === "in") {
+    jobs.push(Promise.allSettled(["Josh Allen", "#BillsMafia"].map(fetchBsky)).then((results) => {
+      state.billsLive.liveBsky = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+    }));
+  }
+
+  // Followed insiders (user-curated Bluesky handles) — no like-count filter.
+  if (state.bskyHandles.length) {
+    jobs.push(Promise.allSettled(state.bskyHandles.map(async (handle) => {
+      const res = await fetchWithTimeout(BSKY_AUTHOR_FEED(handle));
+      const json = await res.json();
+      return (json?.feed || []).map((f) => f.post).filter((p) => p?.record?.text).map((p) => {
+        const rkey = String(p.uri || "").split("/").pop();
+        return {
+          title: p.record.text.slice(0, 220),
+          desc: "",
+          url: `https://bsky.app/profile/${p.author?.handle}/post/${rkey}`,
+          ts: new Date(p.record.createdAt || Date.now()).getTime(),
+          tag: "Bluesky",
+          extra: `✔ @${p.author?.handle || handle} · ♥ ${p.likeCount ?? 0}`,
+        };
+      });
+    })).then((results) => {
+      state.billsLive.authorPosts = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+    }));
+  }
+
+  await Promise.allSettled(jobs);
+}
+
+function renderBillsLive() {
+  const el = document.getElementById("bills-live");
+  if (!el) return;
+  const g = billsGameEntry();
+  const T = MY_NFL_TEAM.sleeper;
+
+  let statusCard = "";
+  if (g && (g.status === "in" || g.status === "post") && g.hScore !== null) {
+    const live = g.status === "in";
+    const lastPlay = state.billsLive.plays[state.billsLive.plays.length - 1];
+    statusCard = `<div class="bet-card ${live ? "live-card" : ""}">
+      <div class="bet-head">
+        <b>${live ? '<span class="live-dot"></span> LIVE · ' : "FINAL · "}${escapeHtml(g.away)} ${g.aScore} @ ${escapeHtml(g.home)} ${g.hScore}</b>
+        <span class="bet-lines">${escapeHtml(g.statusDetail)}</span>
+      </div>
+      ${lastPlay ? `<div class="bet-sub">Last score: ${escapeHtml(lastPlay.text)} (${escapeHtml(String(lastPlay.score))})</div>` : ""}
+      ${live ? '<div class="bet-sub">Feed refreshes every 45s while the game is on.</div>' : ""}
+      ${state.billsLive.plays.length ? `<details><summary class="bet-sub" style="cursor:pointer">All scoring plays (${state.billsLive.plays.length})</summary>
+        <ul class="bet-angles">${state.billsLive.plays.map((p) =>
+          `<li>Q${p.period} ${escapeHtml(p.clock)} — ${escapeHtml(p.text)} (${escapeHtml(String(p.score))})</li>`).join("")}</ul></details>` : ""}
+    </div>`;
+  }
+
+  // The live timeline: insiders + live chatter + team Bluesky + game thread.
+  const items = [
+    ...state.billsLive.authorPosts,
+    ...state.billsLive.liveBsky,
+    ...state.bskyBills,
+    ...state.billsLive.gtComments,
+  ];
+  const seen = new Set();
+  const feed = items.filter((it) => {
+    const key = normName(it.title).slice(0, 60);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => b.ts - a.ts).slice(0, 30);
+
+  el.innerHTML = statusCard + (feed.length
+    ? `<h3 class="waiver-head" style="margin-top:${statusCard ? "14px" : "0"}">📡 Live feed — insiders &amp; ${escapeHtml(T)} chatter</h3>
+       <div class="card-list">${feed.map(newsCard).join("")}</div>`
+    : "");
+}
+
 // ----- My NFL team tab (Bills HQ) -----
 function renderBills() {
   const T = MY_NFL_TEAM.sleeper;
@@ -1581,6 +1718,8 @@ function renderBills() {
   newsEl.innerHTML = deduped.length
     ? deduped.map(newsCard).join("")
     : '<div class="loading">No Bills news right now.</div>';
+
+  renderBillsLive();
 }
 
 // ----- Start/Sit & lineup optimizer -----
@@ -3361,6 +3500,16 @@ function initEvents() {
     }
   });
 
+  // Followed Bluesky insiders
+  const handlesInput = document.getElementById("bsky-handles");
+  handlesInput.value = state.bskyHandles.join(", ");
+  document.getElementById("bsky-handles-save").addEventListener("click", async () => {
+    state.bskyHandles = handlesInput.value.split(",").map((h) => h.trim().replace(/^@/, "")).filter(Boolean);
+    saveJSON(BSKY_HANDLES_KEY, state.bskyHandles);
+    await loadBillsExtras().catch(() => {});
+    renderBills();
+  });
+
   // Draft slot picker (snake-draft math for the Pick Advisor)
   const slotSel = document.getElementById("draft-slot");
   slotSel.innerHTML = Array.from({ length: TEAMS_IN_LEAGUE }, (_, i) =>
@@ -3405,6 +3554,19 @@ updateNotifyUI();
 loadAll();
 // Keep news & waiver trends fresh while the app is open.
 setInterval(() => loadAll(), 10 * 60 * 1000);
+
+// Game-day mode: while the Bills game is live, refresh the live feed —
+// score, scoring plays, game thread, and Bluesky chatter — every 45s.
+setInterval(async () => {
+  if (billsGameEntry()?.status !== "in") return;
+  try {
+    parseScoreboard(await fetchJSON(ESPN_SCOREBOARD_URL));
+  } catch { /* keep last known score */ }
+  const fresh = await fetchBsky(MY_NFL_TEAM.name).catch(() => null);
+  if (fresh) state.bskyBills = fresh;
+  await loadBillsExtras().catch(() => {});
+  renderBills();
+}, LIVE_REFRESH_MS);
 
 // PWA: offline shell + home-screen install.
 if ("serviceWorker" in navigator) {
