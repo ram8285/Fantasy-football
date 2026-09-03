@@ -1329,7 +1329,7 @@ function computeDraftAdvice() {
 // During a live draft, the public league's rosters fill pick by pick. Poll
 // them and mirror every pick onto the draft board: opponents' players marked
 // GONE, yours marked MINE. Advisor + rankings recompute on each tick.
-const DRAFT_FOLLOW_MS = 20 * 1000;
+const DRAFT_FOLLOW_MS = 10 * 1000;
 let draftFollowTimer = null;
 let draftFollowLatest = [];
 
@@ -1337,7 +1337,7 @@ async function draftFollowTick() {
   await loadEspnLeague();
   const statusEl = document.getElementById("draft-follow-status");
   if (!state.espn) {
-    statusEl.textContent = `⚠ Couldn't reach ESPN (${state.espnError || "network"}) — retrying in 20s.`;
+    statusEl.textContent = `⚠ Couldn't reach ESPN (${state.espnError || "network"}) — retrying in 10s.`;
     return;
   }
   const newly = [];
