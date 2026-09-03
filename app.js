@@ -1308,6 +1308,67 @@ function computeDraftAdvice() {
   return { currentPick, nextMyPick, top: scoredCandidates.slice(0, 3), waits };
 }
 
+// ----- ESPN live draft auto-follow -----
+// During a live draft, the public league's rosters fill pick by pick. Poll
+// them and mirror every pick onto the draft board: opponents' players marked
+// GONE, yours marked MINE. Advisor + rankings recompute on each tick.
+const DRAFT_FOLLOW_MS = 20 * 1000;
+let draftFollowTimer = null;
+let draftFollowLatest = [];
+
+async function draftFollowTick() {
+  await loadEspnLeague();
+  const statusEl = document.getElementById("draft-follow-status");
+  if (!state.espn) {
+    statusEl.textContent = `⚠ Couldn't reach ESPN (${state.espnError || "network"}) — retrying in 20s.`;
+    return;
+  }
+  const newly = [];
+  for (const t of state.espn.teams) {
+    const mineTeam = t.id === state.espnCfg.teamId;
+    for (const id of t.ids) {
+      if (!state.draft[id]) {
+        state.draft[id] = mineTeam ? "mine" : "taken";
+        const p = state.byId.get(id);
+        if (p) newly.push(mineTeam ? `${p.name} → YOU` : p.name);
+      }
+    }
+  }
+  if (newly.length) {
+    saveDraft();
+    draftFollowLatest = newly.slice(-4);
+    renderDraft();
+    renderRankings();
+  }
+  const picks = Object.keys(state.draft).length;
+  statusEl.innerHTML = `🔴 <b>Following your draft</b> · ${picks} picks marked · updated ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}` +
+    (draftFollowLatest.length ? `<br>Latest: ${draftFollowLatest.map(escapeHtml).join(" · ")}` : "");
+}
+
+async function startDraftFollow() {
+  const statusEl = document.getElementById("draft-follow-status");
+  const btn = document.getElementById("draft-follow");
+  if (draftFollowTimer) { // toggle off
+    clearInterval(draftFollowTimer);
+    draftFollowTimer = null;
+    btn.textContent = "🔴 Follow my draft";
+    statusEl.textContent = `⏹ Stopped following. ${Object.keys(state.draft).length} picks are marked on the board.`;
+    return;
+  }
+  if (state.espnCfg.teamId == null) {
+    statusEl.textContent = "⚠ First tell the app which team is yours: Start/Sit tab → Manage My Roster → Sync from ESPN → Auto-fetch → tap your team. Then come back and Follow.";
+    return;
+  }
+  btn.textContent = "⏹ Stop following";
+  statusEl.textContent = "Refreshing rankings, ADP, and league data for draft day…";
+  // Draft-day freshness: bust slow caches so the board is current.
+  localStorage.removeItem(PLAYERS_CACHE_KEY);
+  localStorage.removeItem(ADP_CACHE_KEY);
+  await loadAll(true);
+  await draftFollowTick();
+  draftFollowTimer = setInterval(() => draftFollowTick().catch(() => {}), DRAFT_FOLLOW_MS);
+}
+
 // ----- Mock draft simulator -----
 // Simulates the REST of the draft from the current board state, in memory —
 // the real draft tracker is never touched. AI teams pick near their 2-QB ADP
@@ -3390,6 +3451,13 @@ function initEvents() {
     } catch (err) {
       resultEl.innerHTML = `<div class="error-box">Couldn't read that. Make sure you copied the ENTIRE page from the link in step 2 (it should start with {"). ${escapeHtml(err.message)}</div>`;
     }
+  });
+
+  // ESPN live draft follow
+  document.getElementById("draft-follow").addEventListener("click", () => {
+    startDraftFollow().catch((e) => {
+      document.getElementById("draft-follow-status").textContent = `⚠ ${e.message} — tap Follow to retry.`;
+    });
   });
 
   // Mock draft simulator
