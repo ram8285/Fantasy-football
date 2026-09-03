@@ -337,7 +337,9 @@ const state = {
   adp: new Map(),         // normalized name -> {adp, posAdp}
   weather: new Map(),     // home team -> {wind, precip, temp}
   games: [],              // [{home, away, date, ou, spread, details}]
-  espnCfg: loadJSON(ESPN_SYNC_KEY, { leagueId: "1767084290", teamId: null, teamName: null }),
+  // teamName ships as an owner default: if the browser wipes storage (common
+  // in in-app webviews), the sync self-heals by re-adopting the team by name.
+  espnCfg: loadJSON(ESPN_SYNC_KEY, { leagueId: "1767084290", teamId: null, teamName: "Material Weakness" }),
   espn: null,             // {teams, rosteredIds, opponent, currentMatchupPeriod}
   espnError: null,
   // Owner's free-tier keys ship as defaults BY THE OWNER'S EXPLICIT CHOICE —
@@ -1371,8 +1373,13 @@ async function startDraftFollow() {
     return;
   }
   if (state.espnCfg.teamId == null) {
-    statusEl.textContent = "⚠ First tell the app which team is yours: Start/Sit tab → Manage My Roster → Sync from ESPN → Auto-fetch → tap your team. Then come back and Follow.";
-    return;
+    // Try the self-healing name match before giving up.
+    statusEl.textContent = "Reconnecting to your ESPN team…";
+    await loadEspnLeague().catch(() => {});
+    if (state.espnCfg.teamId == null) {
+      statusEl.textContent = "⚠ First tell the app which team is yours: Start/Sit tab → Manage My Roster → Sync from ESPN → Auto-fetch → tap your team. Then come back and Follow.";
+      return;
+    }
   }
   btn.textContent = "⏹ Stop following";
   statusEl.textContent = "Refreshing rankings, ADP, and league data for draft day…";
@@ -2975,6 +2982,15 @@ async function loadEspnLeague() {
     const rosteredIds = new Set(teams.flatMap((t) => t.ids));
     const current = j.status?.currentMatchupPeriod ?? state.week ?? null;
     let opponent = null;
+    // Self-healing sync: if the stored teamId is gone (storage wiped), match
+    // the remembered/default team NAME and silently re-adopt it.
+    if (cfg.teamId == null && cfg.teamName) {
+      const match = teams.find((t) => normName(t.name) === normName(cfg.teamName));
+      if (match) {
+        cfg.teamId = match.id;
+        saveJSON(ESPN_SYNC_KEY, cfg);
+      }
+    }
     if (cfg.teamId != null) {
       const mineTeam = teams.find((t) => t.id === cfg.teamId);
       if (mineTeam) {
