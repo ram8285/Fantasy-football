@@ -313,13 +313,16 @@ const ESPN_SYNC_KEY = "ghq_espnsync_v1"; // {leagueId, teamId, teamName}
 const espnLeagueUrl = (id, year) =>
   `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${year}/segments/0/leagues/${id}?view=mTeam&view=mRoster&view=mMatchup`;
 
-// Your league's actual lineup: OP is a utility slot that accepts ANY offensive
+// Your league's actual lineup (verified against the live ESPN roster view):
+// a FLEX (RB/WR/TE) PLUS the OP utility slot that accepts any offensive
 // player, including a second QB (big deal with 6-pt passing TDs).
+// 10 starters + 7 bench = 17 draftable spots.
 const ROSTER_SLOTS = [
-  ["QB", 1], ["RB", 2], ["WR", 2], ["TE", 1], ["OP", 1], ["D/ST", 1], ["K", 1], ["Bench", 7], ["IR", 1],
+  ["QB", 1], ["RB", 2], ["WR", 2], ["TE", 1], ["FLEX", 1], ["OP", 1], ["D/ST", 1], ["K", 1], ["Bench", 7], ["IR", 1],
 ];
 const SLOT_ELIGIBLE = {
   QB: ["QB"], RB: ["RB"], WR: ["WR"], TE: ["TE"],
+  FLEX: ["RB", "WR", "TE"],
   OP: ["QB", "RB", "WR", "TE"], "D/ST": ["DEF"], K: ["K"],
 };
 
@@ -1202,7 +1205,7 @@ function renderRankings() {
 
 // ----- Draft: live Pick Advisor -----
 const TEAMS_IN_LEAGUE = 10;
-const DRAFT_ROUNDS = 16;
+const DRAFT_ROUNDS = 17; // 10 starters (incl. FLEX + OP) + 7 bench
 
 // Shared 2-QB-adjusted board value curve (used by advisor, trades, rankings).
 function boardValue(p) {
@@ -1213,8 +1216,9 @@ function boardValue(p) {
 function needFactorFor(c, rosterSize, pos) {
   switch (pos) {
     case "QB": return c.QB < 2 ? 1.1 : c.QB === 2 ? 0.5 : 0.2; // 2-QB league
-    case "RB": return c.RB < 2 ? 1.05 : Math.max(0.55, 0.9 - (c.RB - 2) * 0.08);
-    case "WR": return c.WR < 2 ? 1.05 : Math.max(0.55, 0.9 - (c.WR - 2) * 0.08);
+    // FLEX slot makes the 3rd RB/WR a near-starter, so depth stays valuable.
+    case "RB": return c.RB < 2 ? 1.05 : Math.max(0.55, 0.95 - (c.RB - 2) * 0.08);
+    case "WR": return c.WR < 2 ? 1.05 : Math.max(0.55, 0.95 - (c.WR - 2) * 0.08);
     case "TE": return c.TE < 1 ? 1.0 : 0.4;
     case "K": return c.K >= 1 ? 0.05 : rosterSize >= 12 ? 1.1 : rosterSize >= 10 ? 0.5 : 0.12;
     case "DEF": return c.DEF >= 1 ? 0.05 : rosterSize >= 11 ? 1.1 : rosterSize >= 9 ? 0.5 : 0.12;
@@ -1877,17 +1881,14 @@ function optimizeLineup(roster) {
     .sort((a, b) => b.adjusted - a.adjusted);
   const used = new Set();
   const starters = [];
-  const dedicated = ["QB", "RB", "RB", "WR", "WR", "TE", "D/ST", "K"];
-  for (const slot of dedicated) {
+  const fill = (slot) => {
     const pick = scored.find((s) => !used.has(s.p.id) && SLOT_ELIGIBLE[slot].includes(s.p.pos));
     if (pick) used.add(pick.p.id);
     starters.push({ slot, pick: pick || null });
-  }
-  // OP last: best remaining offensive player (often a 2nd QB in this league).
-  const op = scored.find((s) => !used.has(s.p.id) && SLOT_ELIGIBLE.OP.includes(s.p.pos));
-  if (op) used.add(op.p.id);
-  // Show OP right after TE, before D/ST.
-  starters.splice(6, 0, { slot: "OP", pick: op || null });
+  };
+  // Dedicated position slots first, then FLEX (best remaining RB/WR/TE),
+  // then OP (best remaining offensive player — often a 2nd QB here).
+  for (const slot of ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "OP", "D/ST", "K"]) fill(slot);
   const bench = scored.filter((s) => !used.has(s.p.id));
   return { starters, bench };
 }

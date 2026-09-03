@@ -156,7 +156,7 @@ python3 -m http.server 8000
   Rings, and Eye Patches" league; the projection math in `leaguePoints()` reads
   the live values.
 - **Roster slots** are in `ROSTER_SLOTS` in `app.js`
-  (QB / 2 RB / 2 WR / TE / OP / D/ST / K / 7 bench / IR).
+  (QB / 2 RB / 2 WR / TE / FLEX / OP / D/ST / K / 7 bench / IR — a 17-round draft).
 
 ## Notes
 
