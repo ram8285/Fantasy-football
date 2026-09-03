@@ -2936,8 +2936,10 @@ function espnTeamsFrom(j) {
       ids: players.map((n) => byName.get(normName(n))).filter(Boolean),
       starterIds: starterNames.map((n) => byName.get(normName(n))).filter(Boolean),
     };
-  }).filter((t) => t.players.length);
-  if (!teams.length) throw new Error("No rosters found — make sure you copied the whole page.");
+  });
+  // NOTE: empty rosters are NORMAL before the draft — keep those teams so the
+  // user can pick theirs and Live Draft Sync can fill rosters pick by pick.
+  if (!teams.length) throw new Error("No teams in that data — make sure you copied the whole page.");
   return teams;
 }
 
@@ -3408,9 +3410,11 @@ function initEvents() {
       renderEspnStatus();
       return;
     }
+    const preDraft = state.espn.teams.every((t) => !t.players.length);
     resultEl.innerHTML = `<p class="subtitle">✅ League fetched (${state.espn.teams.length} teams) — tap YOUR team to turn on auto-sync:</p>
       <div class="espn-teams">${state.espn.teams.map((t) =>
-        `<button class="btn" data-espn-auto="${t.id}">${escapeHtml(t.name)} (${t.ids.length})</button>`).join("")}</div>`;
+        `<button class="btn" data-espn-auto="${t.id}">${escapeHtml(t.name)} (${t.ids.length})</button>`).join("")}</div>
+      ${preDraft ? '<p class="subtitle" style="margin-top:8px">Rosters showing (0) is normal before your draft — pick your team anyway, then use 🛰 Live Draft Sync on the Draft tab and it fills in as you draft.</p>' : ""}`;
     resultEl.onclick = async (e) => {
       const btn = e.target.closest("[data-espn-auto]");
       if (!btn) return;
@@ -3444,6 +3448,10 @@ function initEvents() {
         const btn = e.target.closest("[data-espn-team]");
         if (!btn) return;
         const r = importEspnTeam(teams[Number(btn.dataset.espnTeam)]);
+        if (r.total === 0) {
+          resultEl.innerHTML = '<p class="subtitle">✅ Team selected. Rosters are empty until your draft — after (or during) it, 🛰 Live Draft Sync on the Draft tab or a re-sync here fills it in.</p>';
+          return;
+        }
         resultEl.innerHTML = `<p class="subtitle">✅ Imported ${r.matched} of ${r.total} players into My Roster.` +
           (r.unmatched.length ? `<br>Couldn't match: ${r.unmatched.map(escapeHtml).join(", ")} — add them with the search box (D/ST units: search the team name).` : "") +
           `</p>`;
