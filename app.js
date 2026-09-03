@@ -1259,6 +1259,11 @@ function computeDraftAdvice() {
     leftInTier[pos] = available.filter((p) => p.pos === pos && posRank(p) <= tierSize[pos]).length;
   }
 
+  // Late-draft sleeper mode: from ~round 7 the advisor blends in breakout
+  // signals — 24h add surges and rank risers — ramping to full weight by R10.
+  const round = Math.ceil(currentPick / TEAMS_IN_LEAGUE);
+  const lateFactor = Math.min(1, Math.max(0, (round - 6) / 4));
+
   const scoredCandidates = available.slice(0, 60).map((p) => {
     const v = boardValue(p);
     const nf = needFactor(p.pos);
@@ -1274,8 +1279,30 @@ function computeDraftAdvice() {
     else if (adp !== null && adp < followingMyPick) reasons.push(`ADP ${adp} — won't survive two more turns`);
     if (lastOfTier) reasons.push(`one of the last ${leftInTier[p.pos]} startable ${p.pos === "DEF" ? "D/ST" : p.pos}s`);
     if (p.mrank && p.lrank && p.mrank - p.lrank >= 8) reasons.push(`market #${p.mrank} — leaguemates will undervalue`);
-    return { p, score: v * nf * urgency * scarcity, reasons, adp };
+    let upside = 1;
+    const buzz = state.trendMap.get(p.id)?.add || 0;
+    const riser = state.rankDeltas?.moves?.find((m) => m.id === p.id);
+    if (lateFactor > 0 && buzz >= 500) {
+      upside += lateFactor * Math.min(0.3, buzz / 30000);
+      reasons.push(`🔥 ${buzz.toLocaleString()} adds in 24h — sleeper buzz`);
+    }
+    if (lateFactor > 0 && riser) {
+      upside += lateFactor * 0.1;
+      reasons.push(`📈 up ${riser.from - riser.to} rank spots — riser`);
+    }
+    return { p, score: v * nf * urgency * scarcity * upside, reasons, adp };
   }).sort((a, b) => b.score - a.score);
+
+  // Dedicated late-round stash list: deep-ranked players the fantasy world is
+  // grabbing — shown even when they don't crack the top-3 recommendation.
+  const sleeperWatch = lateFactor > 0
+    ? available
+        .filter((p) => (p.lrank > 60 || p.rank > 200))
+        .map((p) => ({ p, buzz: state.trendMap.get(p.id)?.add || 0, riser: state.rankDeltas?.moves?.find((m) => m.id === p.id) }))
+        .filter((x) => x.buzz >= 500 || x.riser)
+        .sort((a, b) => b.buzz - a.buzz)
+        .slice(0, 3)
+    : [];
 
   // Positions safe to wait on: your need, but the best of them should
   // still be there at your next turn per ADP.
@@ -1289,7 +1316,7 @@ function computeDraftAdvice() {
     }
   }
 
-  return { currentPick, nextMyPick, top: scoredCandidates.slice(0, 3), waits };
+  return { currentPick, nextMyPick, top: scoredCandidates.slice(0, 3), waits, sleeperWatch };
 }
 
 // ----- ESPN live draft auto-follow -----
@@ -1448,6 +1475,10 @@ function renderDraftAdvisor() {
   });
   if (a.waits.length) {
     html += `<div class="advisor-waits">🕐 ${a.waits.map(escapeHtml).join("<br>🕐 ")}</div>`;
+  }
+  if (a.sleeperWatch?.length) {
+    html += `<div class="advisor-waits">💎 Sleeper watch: ${a.sleeperWatch.map((s) =>
+      `<b>${escapeHtml(s.p.name)}</b> (${s.p.pos}${posRank(s.p)}${s.buzz ? `, ${s.buzz.toLocaleString()} adds/24h` : ""}${s.riser ? `, ▲${s.riser.from - s.riser.to} spots` : ""})`).join(" · ")}</div>`;
   }
   el.innerHTML = html;
 }
