@@ -53,23 +53,17 @@ const SCORING_CONFIG = [
     { key: "d_int", label: "Each Interception (INT)", def: 2 },
     { key: "d_fr", label: "Each Fumble Recovered (FR)", def: 2 },
     { key: "d_safety", label: "Each Safety (SF)", def: 2 },
+    // League update (Sep 2026): yards-allowed scoring REMOVED entirely;
+    // points-allowed brackets adjusted (14-17 now 2, new 18-21 = 1 tier).
     { key: "pa0", label: "0 points allowed (PA0)", def: 5 },
     { key: "pa1", label: "1-6 points allowed (PA1)", def: 4 },
     { key: "pa7", label: "7-13 points allowed (PA7)", def: 3 },
-    { key: "pa14", label: "14-17 points allowed (PA14)", def: 1 },
-    { key: "pa18", label: "18-27 points allowed (PA18)", def: 0 },
+    { key: "pa14", label: "14-17 points allowed (PA14)", def: 2 },
+    { key: "pa18", label: "18-21 points allowed (PA18)", def: 1 },
+    { key: "pa22", label: "22-27 points allowed (PA22)", def: 0 },
     { key: "pa28", label: "28-34 points allowed (PA28)", def: -1 },
     { key: "pa35", label: "35-45 points allowed (PA35)", def: -3 },
     { key: "pa46", label: "46+ points allowed (PA46)", def: -5 },
-    { key: "ya100", label: "Less than 100 total yards allowed (YA100)", def: 5 },
-    { key: "ya199", label: "100-199 total yards allowed (YA199)", def: 3 },
-    { key: "ya299", label: "200-299 total yards allowed (YA299)", def: 2 },
-    { key: "ya349", label: "300-349 total yards allowed (YA300)", def: 0 },
-    { key: "ya399", label: "350-399 total yards allowed (YA399)", def: -1 },
-    { key: "ya449", label: "400-449 total yards allowed (YA449)", def: -3 },
-    { key: "ya499", label: "450-499 total yards allowed (YA499)", def: -5 },
-    { key: "ya549", label: "500-549 total yards allowed (YA549)", def: -6 },
-    { key: "ya550", label: "550+ total yards allowed (YA550)", def: -7 },
     { key: "d_2pt_ret", label: "2pt Return (2PTRET)", def: 2, game: true },
     { key: "d_1pt_sfty", label: "1pt Safety (1PSF)", def: 1, game: true },
   ]},
@@ -124,8 +118,8 @@ function strategyNotes() {
     });
   }
   notes.push({
-    title: "D/ST is a massive weekly swing",
-    body: "Between points-allowed and yards-allowed brackets, a shutdown day can score 20+, and a blowup can go deep negative. Stream defenses against weak offenses every week instead of holding one all season — check the Waivers tab.",
+    title: "D/ST scores on points allowed only",
+    body: "Yards-allowed scoring was removed, so D/ST swings are smaller now: the bracket runs from +5 (shutout) to -5 (46+ allowed), plus sacks, turnovers, and TDs. Matchup still matters — stream defenses against weak offenses — but a defense's turnover/sack upside now counts for relatively more than opponent yardage.",
   });
   if (S.fum_lost < 0) {
     notes.push({
@@ -996,8 +990,9 @@ function leaguePoints(s) {
   pts +=
     n("sack") * S.d_sack + (n("int") + n("def_int")) * S.d_int + n("fum_rec") * S.d_fr +
     (n("def_td") + n("def_st_td")) * S.d_td + n("safe") * S.d_safety + n("blk_kick") * S.d_blk;
+  // Yards-allowed scoring was removed from the league (Sep 2026) — D/ST
+  // brackets are points-allowed only now.
   if (s.pts_allow !== undefined) pts += paBracket(n("pts_allow"));
-  if (s.yds_allow !== undefined) pts += yaBracket(n("yds_allow"));
   return Math.round(pts * 10) / 10;
 }
 
@@ -1007,22 +1002,11 @@ function paBracket(pa) {
   if (pa <= 6) return S.pa1;
   if (pa <= 13) return S.pa7;
   if (pa <= 17) return S.pa14;
-  if (pa <= 27) return S.pa18;
+  if (pa <= 21) return S.pa18;
+  if (pa <= 27) return S.pa22;
   if (pa <= 34) return S.pa28;
   if (pa <= 45) return S.pa35;
   return S.pa46;
-}
-function yaBracket(ya) {
-  const S = state.scoring;
-  if (ya < 100) return S.ya100;
-  if (ya < 200) return S.ya199;
-  if (ya < 300) return S.ya299;
-  if (ya < 350) return S.ya349;
-  if (ya < 400) return S.ya399;
-  if (ya < 450) return S.ya449;
-  if (ya < 500) return S.ya499;
-  if (ya < 550) return S.ya549;
-  return S.ya550;
 }
 
 function setUpdatedAt(text) {
