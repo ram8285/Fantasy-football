@@ -1,6 +1,6 @@
 /* Gridiron HQ service worker: cache the app shell so it opens instantly
  * (and offline), while API data always goes to the network. */
-const CACHE = "ghq-shell-v2";
+const CACHE = "ghq-shell-v3";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "manifest.json", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", (e) => {
