@@ -296,7 +296,7 @@ const STADIUMS = {
   TEN: { lat: 36.1665, lon: -86.7713 },               WAS: { lat: 38.9077, lon: -76.8645 },
 };
 
-const PLAYERS_CACHE_KEY = "ghq_players_v1";
+const PLAYERS_CACHE_KEY = "ghq_players_v2"; // v2: records carry espnId
 const PLAYERS_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h — ranks shift slowly
 const DRAFT_KEY = "ghq_draft_v1";
 const MYTEAM_KEY = "ghq_myteam_v1";
@@ -311,7 +311,7 @@ const DRAFT_SLOT_KEY = "ghq_draftslot_v1";
 const ESPN_SYNC_KEY = "ghq_espnsync_v1"; // {leagueId, teamId, teamName}
 
 const espnLeagueUrl = (id, year) =>
-  `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${year}/segments/0/leagues/${id}?view=mTeam&view=mRoster&view=mMatchup`;
+  `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${year}/segments/0/leagues/${id}?view=mTeam&view=mRoster&view=mMatchup&view=mDraftDetail`;
 
 // Your league's actual lineup (verified against the live ESPN roster view):
 // a FLEX (RB/WR/TE) PLUS the OP utility slot that accepts any offensive
@@ -487,6 +487,7 @@ async function loadPlayers(force = false) {
       team: p.team || "FA",
       rank,
       injury: p.injury_status || null,
+      espnId: p.espn_id ?? null, // maps ESPN draft-feed picks to our players
     });
   }
   players.sort((a, b) => a.rank - b.rank);
@@ -571,6 +572,7 @@ async function loadAll(force = false) {
       .then((players) => {
         state.players = applyLeagueRanks(players);
         state.byId = new Map(players.map((p) => [p.id, p]));
+        state.byEspnId = new Map(players.filter((p) => p.espnId != null).map((p) => [Number(p.espnId), p]));
       })
       .catch((e) => showError("rankings-list", "Couldn't load player data", e)),
 
@@ -1341,15 +1343,21 @@ async function draftFollowTick() {
     return;
   }
   const newly = [];
+  const mark = (p, mineTeam) => {
+    if (!p || state.draft[p.id]) return;
+    state.draft[p.id] = mineTeam ? "mine" : "taken";
+    newly.push(mineTeam ? `${p.name} → YOU` : p.name);
+  };
+  // Source 1: the live draft feed (updates pick-by-pick DURING the draft).
+  for (const pk of state.espnDraftPicks || []) {
+    const espnId = Number(pk.playerId ?? pk.playerID);
+    if (!espnId) continue;
+    mark(state.byEspnId?.get(espnId), pk.teamId === state.espnCfg.teamId);
+  }
+  // Source 2: filled rosters (authoritative once ESPN commits them).
   for (const t of state.espn.teams) {
     const mineTeam = t.id === state.espnCfg.teamId;
-    for (const id of t.ids) {
-      if (!state.draft[id]) {
-        state.draft[id] = mineTeam ? "mine" : "taken";
-        const p = state.byId.get(id);
-        if (p) newly.push(mineTeam ? `${p.name} → YOU` : p.name);
-      }
-    }
+    for (const id of t.ids) mark(state.byId.get(id), mineTeam);
   }
   if (newly.length) {
     saveDraft();
@@ -3005,6 +3013,8 @@ async function loadEspnLeague() {
       }
     }
     state.espn = { teams, rosteredIds, opponent, currentMatchupPeriod: current };
+    // Live drafts publish picks in draftDetail BEFORE rosters update.
+    state.espnDraftPicks = j.draftDetail?.picks || [];
     state.espnError = null;
   } catch (e) {
     state.espn = null;
